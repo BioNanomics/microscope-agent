@@ -70,8 +70,13 @@
 #
 # frame_id: a monotonic per-process counter on every get_image() capture
 # (see _next_frame_id()), analogous to stage_revision but for images -
-# lets a caller refer back to "the image from frame 42" unambiguously,
-# even though there is not yet a tool to fetch an old frame by id.
+# lets a caller refer back to "the image from frame 42" unambiguously.
+# Each capture's metadata is also appended to FRAME_HISTORY_PATH (see
+# _append_frame_history), and get_frame(frame_id) resolves a frame_id
+# back to that record - but get_frame() is a plain Python function, NOT
+# a 5th MCP tool: team direction is to keep the model-facing surface at
+# exactly 4 tools, so history/lookup logic can grow underneath without
+# growing what the model itself can call.
 #
 # WHY move() IS XY-ONLY (not x/y/z): a blind absolute Z move must never
 # be reachable from a chat prompt (risk of crashing the objective into
@@ -111,6 +116,7 @@ PREVIEW_MAX_DIMENSION = 1024
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MOVE_HISTORY_PATH = REPO_ROOT / "logs" / "move_history.jsonl"
+FRAME_HISTORY_PATH = REPO_ROOT / "logs" / "frame_history.jsonl"
 
 
 def _get_backend(backend: str):
@@ -230,6 +236,42 @@ def _append_move_history(record: dict) -> None:
     MOVE_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(MOVE_HISTORY_PATH, "a") as f:
         f.write(json.dumps(record) + "\n")
+
+
+def _append_frame_history(record: dict) -> None:
+    """Append one get_image() metadata record as a single JSON line to
+    FRAME_HISTORY_PATH - same append-only pattern as
+    _append_move_history, for the same reason. Lets get_frame() resolve
+    a frame_id back to its full-res path/position/stage_revision later,
+    without keeping every frame in the model's context.
+    """
+    FRAME_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(FRAME_HISTORY_PATH, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def get_frame(frame_id: int) -> dict:
+    """Look up a previously captured frame's metadata record (image path,
+    position, stage_revision, timestamps) by the frame_id get_image()
+    returned for it.
+
+    NOT registered as an MCP tool (see server_loop.py) - by explicit team
+    direction the chat-facing surface stays at 4 tools. This is a plain
+    importable function for harness/analysis code that needs to resolve
+    "frame 42" to its full-res file and the position it was captured at,
+    without re-reading FRAME_HISTORY_PATH by hand.
+
+    Raises KeyError if frame_id was never captured.
+    """
+    if FRAME_HISTORY_PATH.exists():
+        with open(FRAME_HISTORY_PATH, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if record["frame_id"] == frame_id:
+                    return record
+    raise KeyError(f"No captured frame with frame_id {frame_id}.")
 
 
 def get_pos(backend: str = "mock") -> dict:
@@ -369,6 +411,7 @@ def get_image(
         "captured_at": pos["measured_at"],
         "monotonic_ms": pos["monotonic_ms"],
     }
+    _append_frame_history(metadata)
     return [metadata, _make_preview_image(image_path)]
 
 
