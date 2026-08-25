@@ -210,19 +210,64 @@ def _next_frame_id() -> int:
         return _frame_counter
 
 
-def _make_preview_image(path: Path) -> MCPImage:
-    """Downscale a full-res capture to a small JPEG for embedding in the
-    MCP response's content, so the model can actually see the picture in
-    context instead of only getting a file path it can't view. The
-    full-res PNG stays on disk (the `image` path in get_image()'s return
-    dict) for anything that needs full quality - this preview is only
-    for the model's own visual interpretation, which doesn't benefit
-    from more than ~1024px on the long edge.
+def _validate_crop(crop: dict) -> None:
+    """Raise ValueError if `crop` isn't a well-formed {"x","y","width",
+    "height"} box - each a 0.0-1.0 fraction of the full-res frame, with
+    the box not running past the frame's edge. Fractions (not pixels) so
+    the caller never needs to know the camera's actual sensor
+    resolution - see get_image()'s docstring.
+    """
+    missing = {"x", "y", "width", "height"} - crop.keys()
+    if missing:
+        raise ValueError(f"crop is missing required key(s): {sorted(missing)}")
+    for key in ("x", "y", "width", "height"):
+        value = crop[key]
+        if not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"crop['{key}'] must be a number between 0.0 and 1.0, got {value!r}")
+    if crop["x"] + crop["width"] > 1.0:
+        raise ValueError("crop['x'] + crop['width'] must not exceed 1.0")
+    if crop["y"] + crop["height"] > 1.0:
+        raise ValueError("crop['y'] + crop['height'] must not exceed 1.0")
+
+
+def _make_preview_image(
+    path: Path,
+    crop: dict | None = None,
+    max_dimension: int = PREVIEW_MAX_DIMENSION,
+) -> MCPImage:
+    """Downscale a full-res capture (optionally cropped first) to a small
+    JPEG for embedding in the MCP response's content, so the model can
+    actually see the picture in context instead of only getting a file
+    path it can't view. The full-res PNG stays on disk (the `image` path
+    in get_image()'s return dict) for anything that needs full quality -
+    this preview, cropped or not, is only for the model's own visual
+    interpretation.
+
+    crop: optional {"x","y","width","height"} fractions of the full-res
+    frame (see _validate_crop) - lets a caller spend preview resolution
+    on a small region of interest instead of the whole frame, e.g. after
+    spotting something in a wide low-res shot. None (default) previews
+    the whole frame, unchanged from before this parameter existed.
+
+    max_dimension: long-edge cap in pixels for the returned JPEG -
+    defaults to PREVIEW_MAX_DIMENSION, but a crop commonly wants a
+    higher cap (already a small region, so more pixels are still cheap)
+    or a survey shot a lower one.
     """
     with _PILImage.open(path) as img:
-        img.thumbnail((PREVIEW_MAX_DIMENSION, PREVIEW_MAX_DIMENSION))
+        img = img.convert("RGB")
+        if crop is not None:
+            width, height = img.size
+            box = (
+                round(crop["x"] * width),
+                round(crop["y"] * height),
+                round((crop["x"] + crop["width"]) * width),
+                round((crop["y"] + crop["height"]) * height),
+            )
+            img = img.crop(box)
+        img.thumbnail((max_dimension, max_dimension))
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=85)
+        img.save(buf, format="JPEG", quality=85)
         return MCPImage(data=buf.getvalue(), format="jpeg")
 
 
@@ -347,6 +392,8 @@ def get_image(
     confirm: bool = False,
     exposure_time_us: float | None = None,
     gain: float | None = None,
+    crop: dict | None = None,
+    max_dimension: int | None = None,
 ) -> list:
     """Grab one frame from the Baumer GenICam camera (see
     acquisition.backends.baumer_genicam.BaumerGenICam) and return it
@@ -390,12 +437,30 @@ def get_image(
     BayerRG8 via BaumerGenICam.capture()) - see that method's docstring
     for the one unconfirmed detail (which Bayer color code is actually
     correct for this camera).
+
+    crop: optional {"x","y","width","height"}, each a 0.0-1.0 fraction of
+    the full frame, restricting the embedded preview to that region -
+    e.g. after a wide shot shows something interesting near the right
+    edge, crop={"x":0.6,"y":0.2,"width":0.3,"height":0.3} previews just
+    that area instead of resending the whole frame. The full-res file on
+    disk is always the complete, uncropped frame - crop only changes
+    what's embedded for the model to look at. Raises ValueError if the
+    box isn't within [0, 1] or runs past the frame's edge. Omit for the
+    previous behavior (whole-frame preview).
+
+    max_dimension: long-edge cap in pixels for the embedded preview,
+    overriding PREVIEW_MAX_DIMENSION for this call - e.g. a smaller
+    value for a coarse survey shot, or a larger one when cropping (an
+    already-small region can afford more pixels). Omit to use the
+    default.
     """
     if not confirm:
         raise PermissionError(
             "get_image fires a real camera and requires confirm=True. "
             "Refusing to proceed without explicit confirmation."
         )
+    if crop is not None:
+        _validate_crop(crop)
 
     camera = _get_camera()
     if exposure_time_us is not None or gain is not None:
@@ -410,9 +475,15 @@ def get_image(
         "stage_revision": pos["stage_revision"],
         "captured_at": pos["measured_at"],
         "monotonic_ms": pos["monotonic_ms"],
+        "crop": crop,
     }
     _append_frame_history(metadata)
-    return [metadata, _make_preview_image(image_path)]
+    preview = _make_preview_image(
+        image_path,
+        crop=crop,
+        max_dimension=max_dimension if max_dimension is not None else PREVIEW_MAX_DIMENSION,
+    )
+    return [metadata, preview]
 
 
 def get_move_history(limit: int = 50) -> dict:

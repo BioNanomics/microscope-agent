@@ -14,10 +14,15 @@ Exactly 4, by design - kept deliberately minimal:
 - **`move(x, y, backend, confirm)`** - move the XY stage to an absolute
   position, returns the *actual* resulting position. XY-only, on purpose
   (no absolute Z move is reachable from chat - crash risk into the sample).
-- **`get_image(confirm, exposure_time_us, gain)`** - capture a real frame
-  from the Baumer camera, paired with the exact stage position it was
-  taken at. Returns both the metadata and an embedded image preview, so
-  the model can actually see the picture, not just a file path.
+- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension)`** -
+  capture a real frame from the Baumer camera, paired with the exact
+  stage position it was taken at. Returns both the metadata and an
+  embedded image preview, so the model can actually see the picture, not
+  just a file path. `crop` (optional `{"x","y","width","height"}`
+  fractions of the full frame) restricts the embedded preview to a
+  region of interest instead of resending the whole frame; the full-res
+  file on disk is always uncropped. `max_dimension` overrides the
+  preview's default long-edge cap for that call.
 
 `get_pos`/`move`/`get_image` all return `stage_revision`, a monotonic
 counter bumped whenever a call observes the stage at a different
