@@ -54,12 +54,24 @@
 # ISO-8601 wall clock; monotonic_ms, so "218ms after this image" style
 # reasoning isn't thrown off by clock corrections).
 #
-# WHY NO stage_revision (yet): a monotonic counter that increments on
-# every physical stage move (from any actor) would let a server detect
-# "the agent's cached position is stale" without a full get_pos(), and
-# would let move() take an optional expected_revision to reject a move
-# if the stage changed since the agent last looked. Left out until
-# concurrent-control/race-condition problems actually show up.
+# stage_revision: a monotonic counter, incremented whenever get_pos()/
+# move()/get_image() observes a position that differs (to 0.01 um) from
+# the last position this process saw - see _note_position(). This is
+# pull-based, not push-based: an external actor (joystick, another
+# controller) moving the stage is only detected the next time one of
+# these tools is actually called, not the instant it happens. That's
+# enough to let the model tell "the image/position I'm holding is still
+# current" from "something moved the stage since I last looked" without
+# a full get_pos() round-trip every time - compare the stage_revision
+# already attached to an old result against a fresh one. An optional
+# expected_revision on move() (to reject a move if the stage changed
+# since the agent last looked) is left for when that need actually shows
+# up, same as before.
+#
+# frame_id: a monotonic per-process counter on every get_image() capture
+# (see _next_frame_id()), analogous to stage_revision but for images -
+# lets a caller refer back to "the image from frame 42" unambiguously,
+# even though there is not yet a tool to fetch an old frame by id.
 #
 # WHY move() IS XY-ONLY (not x/y/z): a blind absolute Z move must never
 # be reachable from a chat prompt (risk of crashing the objective into
@@ -161,6 +173,37 @@ def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="milliseconds")
 
 
+# Process-local revision state - see this file's header comment
+# ("stage_revision" / "frame_id") for why these exist and why they're
+# pull-based rather than backed by a hardware change-notification.
+_revision_lock = threading.Lock()
+_stage_revision = 0
+_last_known_position: dict | None = None
+_frame_counter = 0
+
+
+def _note_position(position: dict) -> int:
+    """Bump _stage_revision if `position` differs (to 0.01 um) from the
+    last position this process observed, then return the current
+    revision. Called from every get_pos()/move()/get_image() so any of
+    them can surface "did the stage move since the caller last looked".
+    """
+    global _stage_revision, _last_known_position
+    rounded = {axis: round(value, 2) for axis, value in position.items()}
+    with _revision_lock:
+        if rounded != _last_known_position:
+            _stage_revision += 1
+            _last_known_position = rounded
+        return _stage_revision
+
+
+def _next_frame_id() -> int:
+    global _frame_counter
+    with _revision_lock:
+        _frame_counter += 1
+        return _frame_counter
+
+
 def _make_preview_image(path: Path) -> MCPImage:
     """Downscale a full-res capture to a small JPEG for embedding in the
     MCP response's content, so the model can actually see the picture in
@@ -203,12 +246,18 @@ def get_pos(backend: str = "mock") -> dict:
 
     backend: "mock" (default, safe) or "sdk" (real hardware). Read-only -
     no confirmation required for either backend.
+
+    Also returns stage_revision - see this file's header comment - so a
+    caller holding an older result can tell whether the stage has moved
+    since then without diffing raw coordinates itself.
     """
     nis = _get_backend(backend)
     x, y = nis.XY_GetPosition()
     z = nis.Z_GetPosition()
+    position = {"x": to_plain_float(x), "y": to_plain_float(y), "z": to_plain_float(z)}
     return {
-        "position": {"x": to_plain_float(x), "y": to_plain_float(y), "z": to_plain_float(z)},
+        "position": position,
+        "stage_revision": _note_position(position),
         "measured_at": _now_iso(),
         "monotonic_ms": int(monotonic() * 1000),
         "backend": backend,
@@ -237,8 +286,10 @@ def move(x: float, y: float, backend: str = "mock", confirm: bool = False) -> di
     z = nis.Z_GetPosition()
     completed_at = _now_iso()
 
+    position = {"x": to_plain_float(new_x), "y": to_plain_float(new_y), "z": to_plain_float(z)}
     result = {
-        "position": {"x": to_plain_float(new_x), "y": to_plain_float(new_y), "z": to_plain_float(z)},
+        "position": position,
+        "stage_revision": _note_position(position),
         "started_at": started_at,
         "completed_at": completed_at,
         "backend": backend,
@@ -261,14 +312,20 @@ def get_image(
     immediately after the frame is captured, so the two stay coupled
     without the model needing a separate get_pos() call.
 
-    Returns [metadata_dict, image] - the metadata dict (position,
-    timestamps, full-res file path) as one content block, plus an
-    actual viewable image as a second content block (a downscaled JPEG
-    preview - see _make_preview_image - embedded directly in the MCP
-    response, not just a path the model can't see). The full-resolution
-    PNG is still saved to disk at metadata_dict["image"] for anything
-    that needs full quality (analysis, calibration, etc.) - the embedded
-    preview is only for the model's own visual interpretation.
+    Returns [metadata_dict, image] - the metadata dict (frame_id,
+    position, stage_revision, timestamps, full-res file path) as one
+    content block, plus an actual viewable image as a second content
+    block (a downscaled JPEG preview - see _make_preview_image -
+    embedded directly in the MCP response, not just a path the model
+    can't see). The full-resolution PNG is still saved to disk at
+    metadata_dict["image"] for anything that needs full quality
+    (analysis, calibration, etc.) - the embedded preview is only for the
+    model's own visual interpretation.
+
+    frame_id is a per-process monotonic counter identifying this
+    specific capture; stage_revision is the same counter get_pos()/
+    move() use - see this file's header comment - so a caller can tell
+    whether the stage has moved since this particular image was taken.
 
     No NIS-Elements involved - connects directly to the camera via its
     GenTL producer (see BaumerGenICam/find_cti_files), independent of any
@@ -306,7 +363,9 @@ def get_image(
 
     metadata = {
         "image": str(image_path),
+        "frame_id": _next_frame_id(),
         "position": pos["position"],
+        "stage_revision": pos["stage_revision"],
         "captured_at": pos["measured_at"],
         "monotonic_ms": pos["monotonic_ms"],
     }

@@ -18,6 +18,14 @@ Exactly 4, by design - kept deliberately minimal:
   from the Baumer camera, paired with the exact stage position it was
   taken at. Returns both the metadata and an embedded image preview, so
   the model can actually see the picture, not just a file path.
+
+`get_pos`/`move`/`get_image` all return `stage_revision`, a monotonic
+counter bumped whenever a call observes the stage at a different
+position than the last one this process saw - so a model holding an
+older result can tell "has the stage moved since then" (e.g. someone
+touched the joystick) without diffing raw coordinates itself.
+`get_image` additionally returns `frame_id`, a per-process counter
+identifying that specific capture.
 - **`get_move_history(limit)`** - every point `move()` has actually sent
   the stage to this session, so "where have we already been" doesn't
   need to be re-derived from conversation history.
