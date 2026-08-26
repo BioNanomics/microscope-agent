@@ -388,6 +388,50 @@ def move(x: float, y: float, backend: str = "mock", confirm: bool = False) -> di
     return result
 
 
+def move_focus(z: float, backend: str = "mock", confirm: bool = False) -> dict:
+    """Move focus (Z) to an absolute position, in microns, and return the
+    ACTUAL resulting position - same shape/safety pattern as move(), but
+    for Z.
+
+    NOT registered as an MCP tool (see server_loop.py) and NOT added to
+    any chat-facing tool list (harness/agent.py, harness/mcp_agent.py) -
+    by explicit design (see this file's header comment on why move() is
+    XY-only), a blind Z move must never be reachable from a chat prompt:
+    crash risk into the sample/objective. This exists purely as a plain
+    importable function for deliberate, human-run use (e.g. a one-off
+    script during manual focus adjustment) - never wire this into an
+    Anthropic tool list or an MCP tool registration.
+
+    backend: "mock" (default, safe) or "sdk" (real hardware - requires
+    confirm=True, same gate as move()). The underlying SDK/mock backend
+    already caps a single call to MAX_Z_STEP_UM (50 microns, see
+    nis_sdk.py/nis_mock.py) - large focus changes must be done as
+    multiple smaller confirmed calls, not attempted in one call here.
+    """
+    _require_confirm_for_sdk(backend, confirm)
+    nis = _get_backend(backend)
+
+    started_at = _now_iso()
+    nis.Z_Move(z)
+    x, y = nis.XY_GetPosition()
+    new_z = nis.Z_GetPosition()
+    completed_at = _now_iso()
+
+    position = {"x": to_plain_float(x), "y": to_plain_float(y), "z": to_plain_float(new_z)}
+    result = {
+        "position": position,
+        "stage_revision": _note_position(position),
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "backend": backend,
+    }
+    _append_move_history({
+        "requested": {"z": to_plain_float(z)},
+        **result,
+    })
+    return result
+
+
 def get_image(
     confirm: bool = False,
     exposure_time_us: float | None = None,
