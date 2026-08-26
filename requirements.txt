@@ -13,3 +13,7 @@ Pillow==12.3.0
 # --- Stage position/move (Ti2 ActiveX SDK + saved-position files) ---
 pywin32==312
 PyYAML==6.0.3
+
+# --- Harness loop (harness/agent.py): calls Claude directly, no MCP client ---
+anthropic==1.0.0
+python-dotenv==1.2.3

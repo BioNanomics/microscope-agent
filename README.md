@@ -69,6 +69,30 @@ python -m mcp_server.server_loop
 Then point an MCP client (Claude Desktop's `claude_desktop_config.json`,
 or a project-level `.mcp.json` for Claude Code) at this command.
 
+## Harness loop (`harness/agent.py`)
+
+A second, independent way to drive the same tools - a small interactive
+CLI that calls Claude (Anthropic API) directly with tool use, importing
+`mcp_server/loop_tools.py`'s functions in-process rather than going
+through `server_loop.py`'s MCP/stdio protocol. `server_loop.py` is
+unaffected either way - use whichever fits: MCP for Claude Desktop/Code,
+this loop for a standalone script.
+
+Requires `ANTHROPIC_API_KEY` set - either in a `.env` file at the repo
+root (copy the commented-out line in `.env`, fill in your real key; this
+file is gitignored and loaded automatically by `harness/agent.py`), as a
+regular environment variable, or via `ant auth login`. Real hardware
+(`backend="sdk"`, or any `get_image` call) always pauses for a live
+"y/N" approval at the terminal before executing, regardless of what the
+model requests - see `harness/agent.py`'s header comment for why. Old
+captured images are pruned from the model's context after a couple of
+turns (`harness/context.py`) so a long session doesn't keep resending
+every frame it has ever captured.
+
+```
+python -m harness.agent
+```
+
 ## Hardware
 
 - **Stage/focus**: Nikon Ti2-E via the Ti2 ActiveX SDK (`nis_sdk.py`) -
