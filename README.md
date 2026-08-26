@@ -93,6 +93,27 @@ every frame it has ever captured.
 python -m harness.agent
 ```
 
+## MCP client harness (`harness/mcp_agent.py`)
+
+A third way to drive the same tools - the real-MCP-protocol counterpart
+to `harness/agent.py`. Instead of importing `loop_tools.py` in-process,
+this one spawns `server_loop.py` as a separate subprocess and talks to
+it exactly the way Claude Desktop/Code do: real MCP over stdio, using
+the current MCP SDK (`mcp==2.0.0`, protocol version `2026-07-28`). Same
+`.env`/`ANTHROPIC_API_KEY` setup, same live "y/N" real-hardware approval
+gate, same image pruning via `harness/context.py` - just reached through
+an actual client/server boundary instead of a direct function call.
+
+```
+python -m harness.mcp_agent
+```
+
+See **`docs/mcp_harness.md`** for the full write-up: how the current MCP
+protocol differs from what most tutorials show, why `confirm` is
+stripped from every tool schema before Claude ever sees it, the MCP↔
+Anthropic content-block conversion, and a real stdout/JSON-RPC bug this
+work found and fixed in `nis_mock.py`.
+
 ## Hardware
 
 - **Stage/focus**: Nikon Ti2-E via the Ti2 ActiveX SDK (`nis_sdk.py`) -

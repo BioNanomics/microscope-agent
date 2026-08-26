@@ -16,6 +16,7 @@
 # ------------------------------------------------------------
 
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -129,7 +130,8 @@ class MockNIS:
         delay_sec = distance_um / XY_MAX_SPEED_UM_PER_SEC
         print(
             f"[MockNIS] XY_Move: ({self._x:.2f}, {self._y:.2f}) -> "
-            f"({x:.2f}, {y:.2f}) um (simulated {delay_sec:.3f}s)"
+            f"({x:.2f}, {y:.2f}) um (simulated {delay_sec:.3f}s)",
+            file=sys.stderr,
         )
         time.sleep(delay_sec)
         self._x, self._y = x, y
@@ -168,7 +170,7 @@ class MockNIS:
                 f"{MAX_Z_STEP_UM:.0f} um per-call safety limit. Break large "
                 f"focus changes into smaller confirmed steps."
             )
-        print(f"[MockNIS] Z_Move: {self._z:.2f} -> {z:.2f} um (simulated {Z_MOVE_DELAY_SEC:.3f}s)")
+        print(f"[MockNIS] Z_Move: {self._z:.2f} -> {z:.2f} um (simulated {Z_MOVE_DELAY_SEC:.3f}s)", file=sys.stderr)
         time.sleep(Z_MOVE_DELAY_SEC)
         self._z = z
 
