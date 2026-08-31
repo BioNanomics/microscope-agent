@@ -1,0 +1,7 @@
+# eaa_integration dependencies - fully isolated from the main project's
+# .venv (see ../requirements.txt). Install into THIS folder's own .venv:
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements.txt
+
+eaa-core==1.0.0
+python-dotenv==1.2.3

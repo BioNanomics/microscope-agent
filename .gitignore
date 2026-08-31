@@ -5,3 +5,7 @@ logs/
 data/
 protocols/*.json
 .env
+eaa_integration/memory/
+eaa_integration/*.sqlite
+eaa_integration/*.sqlite-shm
+eaa_integration/*.sqlite-wal
