@@ -156,3 +156,13 @@ work found and fixed in `nis_mock.py`.
   a separate industrial camera, not the confocal N-SPARC detector.
   Only one application can hold it open at a time - close Baumer Camera
   Explorer (or any other GenICam consumer) before running this.
+
+## Versioning
+
+Versions follow [SemVer](https://semver.org/); see `CHANGELOG.md`. The current
+version is importable as `mcp_server.__version__` (from installed package
+metadata).
+
+## License
+
+MIT - see `LICENSE`.
