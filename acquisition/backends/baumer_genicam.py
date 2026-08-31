@@ -195,20 +195,34 @@ class BaumerGenICam:
             except Exception:
                 break
 
+        pixel_format = self._acquirer.remote_device.node_map.PixelFormat.value
         with self._acquirer.fetch(timeout=5) as buffer:
             component = buffer.payload.components[0]
-            mosaic = component.data.reshape(component.height, component.width)
-            # VCXU-23C reports BayerRG8 (confirmed 2026-08-10). cv2's
-            # Bayer color codes are named for OpenCV's own row/col
-            # convention, which doesn't always match a camera's declared
-            # GenICam PixelFormat 1:1 - COLOR_BayerRG2RGB is the literal-
-            # name match used here, but NOT yet independently verified
-            # against a known-color reference target. If captured colors
-            # come out wrong/channel-swapped once there's real light on
-            # the sensor, try COLOR_BayerGR2RGB / COLOR_BayerBG2RGB /
-            # COLOR_BayerGB2RGB instead - re-confirm before trusting this
-            # for actual analysis.
-            rgb = cv2.cvtColor(mosaic, cv2.COLOR_BayerRG2RGB)
+            h, w = component.height, component.width
+            data = component.data
+            # The camera's PixelFormat is whatever it was last left in
+            # (Baumer Camera Explorer, a prior run) - it does NOT reset
+            # per connection. This body's node map currently offers only
+            # Mono8/10/12, RGB8, BGR8 (no Bayer), and defaults to BGR8.
+            # A 3-channel buffer is 3x the size of a raw Bayer mosaic, so
+            # assuming Bayer and reshaping to (h, w) throws "cannot
+            # reshape array of size N". Dispatch on the declared format.
+            if pixel_format == "BGR8":
+                rgb = cv2.cvtColor(data.reshape(h, w, 3), cv2.COLOR_BGR2RGB)
+            elif pixel_format == "RGB8":
+                rgb = data.reshape(h, w, 3)
+            elif pixel_format == "Mono8":
+                rgb = cv2.cvtColor(data.reshape(h, w), cv2.COLOR_GRAY2RGB)
+            elif pixel_format.startswith("Bayer"):
+                # Literal-name match to cv2's code; unverified against a
+                # known-colour target. If colours look swapped under real
+                # light, try COLOR_BayerGR/BG/GB2RGB instead.
+                rgb = cv2.cvtColor(data.reshape(h, w), cv2.COLOR_BayerRG2RGB)
+            else:
+                raise RuntimeError(
+                    f"Unsupported camera PixelFormat {pixel_format!r} - "
+                    "add a branch here for it."
+                )
             Image.fromarray(rgb, mode="RGB").save(dest)
 
         return dest
