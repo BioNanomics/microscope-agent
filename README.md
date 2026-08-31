@@ -45,29 +45,63 @@ No NIS-Elements involved anywhere - the camera is reached directly via
 GenICam/GenTL, and the stage via the Ti2 ActiveX SDK, both independent
 of whether NIS-Elements software is even running.
 
-## Setup
+## Install
+
+This is a normal installable package (`confocal-mcp`) with a console entry
+point. Dependencies are split into groups so a machine only pulls what it needs:
+
+| Group | Pulls in | For |
+|---|---|---|
+| *(core)* | `mcp`, `Pillow`, `PyYAML` | the MCP server against the **mock** stage |
+| `camera` | `harvesters`, `genicam`, `opencv-python` | real Baumer camera capture |
+| `sdk` | `pywin32` | real Ti2 stage control (Windows) |
+| `harness` | `anthropic`, `python-dotenv` | the standalone Claude loops in `harness/` |
+| `all` | everything above | a full workstation |
+
+The real hardware backends are imported lazily, so a core-only install runs
+fine anywhere (CI, a laptop) - it just can't touch hardware.
+
+### From a source checkout
 
 ```
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install -e ".[camera,sdk]"     # real hardware
+.venv\Scripts\pip install -r requirements.txt    # == -e ".[all]"
 ```
 
-One extra step on a new machine: `acquisition/backends/nis_sdk.py`
-imports `NkTi2Ax`, the Nikon Ti2 SDK's generated Python bindings - this
-file is machine-generated (via `pywin32`'s `gencache`/`makepy` against
-the installed SDK), not pip-installable, and isn't included in this
-repo. If it doesn't already exist in `.venv/Lib/site-packages/`, either
-let it regenerate against an installed Ti2 SDK, or copy it from another
-working `.venv` on the same machine.
+### As a standalone tool (isolated, no repo checkout)
+
+```
+uv tool install "git+https://github.com/BioNanomics/microscope-agent[camera,sdk]"
+# or: pipx install "git+https://github.com/BioNanomics/microscope-agent[camera,sdk]"
+```
+
+### Real stage backend (one extra step)
+
+`acquisition/backends/nis_sdk.py` imports `NkTi2Ax`, the Nikon Ti2 SDK's
+generated Python bindings - machine-generated (via `pywin32`'s
+`gencache`/`makepy` against the installed SDK), not pip-installable, and not in
+this repo. If it isn't already in `site-packages/`, let it regenerate against an
+installed Ti2 SDK, or copy it from another working environment on the same
+machine. Not needed for `backend="mock"`.
 
 ## Run
 
 ```
-python -m mcp_server.server_loop
+confocal-mcp                       # installed console script
+python -m mcp_server.server_loop   # equivalent, from a source checkout
 ```
 
-Then point an MCP client (Claude Desktop's `claude_desktop_config.json`,
-or a project-level `.mcp.json` for Claude Code) at this command.
+Point an MCP client at it - Claude Desktop's `claude_desktop_config.json`, or a
+project-level `.mcp.json` for Claude Code:
+
+```json
+{ "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
+```
+
+Data (captures, move/frame history logs) is written under the current working
+directory when the server runs from an installed package - launch it from a
+stable location.
 
 ## Harness loop (`harness/agent.py`)
 

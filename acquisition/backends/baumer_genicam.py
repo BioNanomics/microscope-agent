@@ -36,9 +36,12 @@ import cv2
 from harvesters.core import Harvester
 from PIL import Image
 
+from acquisition.paths import captures_dir
+
 # Same directory nis_mock.MockNIS.capture() writes to, so frames from
-# either backend land in one place.
-CAPTURE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "captures"
+# either backend land in one place. Anchored to the working directory - see
+# acquisition/paths.py.
+CAPTURE_DIR = captures_dir()
 
 # GenTL producer folders confirmed present on the microscope PC,
 # 2026-08-10. Checked in addition to GENICAM_GENTL64_PATH (not instead

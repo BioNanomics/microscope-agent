@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "confocal-mcp"
+version = "0.1.0"
+description = "MCP server for driving a Nikon Ti2-E stage and a Baumer GenICam camera"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Qurratul Ain Quais", email = "qurratul.quais@gmail.com" }]
+keywords = ["mcp", "microscopy", "nikon-ti2", "genicam", "automation"]
+
+# Core: enough to run the MCP server against the mock stage. The real
+# hardware backends are imported lazily, so their heavy / platform-specific
+# dependencies live in the optional groups below.
+dependencies = [
+    "mcp==2.0.0",
+    "Pillow==12.3.0",
+    "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+# Real camera capture (Baumer VCXU-23C via GenICam / harvesters).
+camera = [
+    "harvesters==1.4.3",
+    "genicam==1.5.1",
+    "opencv-python==5.0.0.93",
+]
+# Real stage control (Nikon Ti2 ActiveX SDK). Windows only.
+# NOTE: also needs the machine-generated `NkTi2Ax` bindings, which are not
+# pip-installable - see the README ("Real stage backend").
+sdk = [
+    "pywin32==312",
+]
+# The standalone Claude harness loops in harness/ (not the MCP server).
+harness = [
+    "anthropic==1.0.0",
+    "python-dotenv==1.2.3",
+]
+# Everything, for a full workstation install.
+all = [
+    "confocal-mcp[camera,sdk,harness]",
+]
+
+[project.scripts]
+confocal-mcp = "mcp_server.server_loop:main"
+
+[project.urls]
+Homepage = "https://github.com/BioNanomics/microscope-agent"
+Repository = "https://github.com/BioNanomics/microscope-agent"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_server", "acquisition", "harness"]

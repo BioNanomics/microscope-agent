@@ -1,19 +1,11 @@
-# microscope-agent dependencies
-# Minimal MCP surface for real microscope control: get_image, get_pos,
-# move, get_move_history - see mcp_server/loop_tools.py.
+# Dev install: the package plus every optional dependency group.
+# Dependencies (with exact pins) are declared in pyproject.toml.
+#
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements.txt
+#
+# For a smaller install, pick groups directly instead, e.g.:
+#   pip install -e ".[camera,sdk]"     # real hardware, no harness
+#   pip install -e .                   # mock only
 
-mcp==2.0.0
-
-# --- Camera capture (Baumer GenICam VCXU-23C) ---
-harvesters==1.4.3
-genicam==1.5.1
-opencv-python==5.0.0.93   # Bayer demosaicing only
-Pillow==12.3.0
-
-# --- Stage position/move (Ti2 ActiveX SDK + saved-position files) ---
-pywin32==312
-PyYAML==6.0.3
-
-# --- Harness loop (harness/agent.py): calls Claude directly, no MCP client ---
-anthropic==1.0.0
-python-dotenv==1.2.3
+-e .[all]
