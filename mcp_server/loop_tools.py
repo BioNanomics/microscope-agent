@@ -106,17 +106,21 @@ from time import monotonic
 
 from PIL import Image as _PILImage
 
-from acquisition.backends.baumer_genicam import BaumerGenICam
 from acquisition.orchestration.stage_positions import to_plain_float
+from acquisition.paths import logs_dir as _logs_dir
 from mcp.server.mcpserver import Image as MCPImage
+
+# acquisition.backends.baumer_genicam is imported lazily inside _get_camera()
+# (it pulls in cv2 + harvesters, the "camera" optional-dependency group) - the
+# mock stage path must stay importable on a core-only install, same reason
+# _get_backend() imports nis_sdk lazily.
 
 # Long-edge size for the JPEG preview embedded in get_image()'s MCP
 # response - see that function for why this exists.
 PREVIEW_MAX_DIMENSION = 1024
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-MOVE_HISTORY_PATH = REPO_ROOT / "logs" / "move_history.jsonl"
-FRAME_HISTORY_PATH = REPO_ROOT / "logs" / "frame_history.jsonl"
+MOVE_HISTORY_PATH = _logs_dir() / "move_history.jsonl"
+FRAME_HISTORY_PATH = _logs_dir() / "frame_history.jsonl"
 
 
 def _get_backend(backend: str):
@@ -163,14 +167,21 @@ def _require_confirm_for_sdk(backend: str, confirm: bool) -> None:
 # acquisition - see that class's __init__). A camera can only be held
 # open by one process at a time, so this also means: close any other
 # GenICam consumer (Baumer Camera Explorer, etc.) before the first call.
-_camera: "BaumerGenICam | None" = None
+_camera = None  # type: ignore[var-annotated]  # acquisition.backends.baumer_genicam.BaumerGenICam | None
 _camera_lock = threading.Lock()
 
 
-def _get_camera() -> BaumerGenICam:
+def _get_camera():
+    """Return the process-wide BaumerGenICam, constructing it on first use.
+
+    The import is deferred to here so `import mcp_server.loop_tools` works on a
+    core-only install (no cv2 / harvesters) - only get_image() actually needs
+    the camera stack.
+    """
     global _camera
     with _camera_lock:
         if _camera is None:
+            from acquisition.backends.baumer_genicam import BaumerGenICam
             _camera = BaumerGenICam()
         return _camera
 

@@ -20,6 +20,8 @@ from pathlib import Path
 
 import yaml  # PyYAML - reads a protocol file's `positions:` list
 
+from acquisition.paths import data_root as _data_root
+
 # Stage travel limits (see nis_mock.py / docs/microscope-notes.md's hardware
 # spec) - imported unconditionally since nis_mock.py has no hardware
 # dependency of its own, so these constants are always available regardless
@@ -45,7 +47,7 @@ except ImportError:
         file=sys.stderr,
     )
 
-POSITIONS_FILE = Path(__file__).resolve().parent.parent.parent / "protocols" / "stage_positions.json"
+POSITIONS_FILE = _data_root() / "protocols" / "stage_positions.json"
 
 # ── Backend design ────────────────────────────────────────────────────────
 # StagePositionManager can drive the stage through either of two backends,

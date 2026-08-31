@@ -23,6 +23,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from acquisition.paths import captures_dir as _captures_dir, data_root as _data_root
+
 # Stage travel limits from the Nikon Ti2-E spec (see docs/microscope-notes.md),
 # converted from mm to microns to match the units used by the NIS API.
 X_LIMIT_UM = 57_000.0
@@ -45,10 +47,10 @@ XY_MAX_SPEED_UM_PER_SEC = 25_000.0
 Z_MOVE_DELAY_SEC = 0.05
 
 # Sample frame copied by capture() to simulate a real image capture. Falls
-# back to a generated placeholder if this isn't present - data/ is
-# gitignored, so a fresh clone of the repo won't have it until fetched.
-SAMPLE_FRAME_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "analysis" / "nd2_sample" / "frame_0.png"
-CAPTURE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "captures"
+# back to a generated placeholder if this isn't present (it usually isn't -
+# it's a dev-only asset under the gitignored data/ tree).
+SAMPLE_FRAME_PATH = _data_root() / "data" / "analysis" / "nd2_sample" / "frame_0.png"
+CAPTURE_DIR = _captures_dir()
 
 
 class _MockContext:
