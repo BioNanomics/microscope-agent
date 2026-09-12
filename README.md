@@ -1,54 +1,90 @@
+<div align="center">
+
 # microscope-agent
 
-A minimal MCP server for controlling a real Nikon Ti2-E microscope + Baumer
-GenICam camera from an AI agent (Claude Desktop, Claude Code, or any other
-MCP client).
+**microscope-agent is a minimal MCP server for driving a real Nikon Ti2-E
+microscope from an AI agent.**
 
-## Tools
+Exactly four tools — enough for Claude Desktop, Claude Code, or any other MCP
+client to move the stage and look through the camera.
 
-Exactly 4, by design - kept deliberately minimal:
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![MCP 2.0.0](https://img.shields.io/badge/MCP-2.0.0-8A2BE2.svg)](https://modelcontextprotocol.io)
+[![Changelog](https://img.shields.io/badge/changelog-keep%20a%20changelog-orange.svg)](CHANGELOG.md)
 
-- **`get_pos(backend)`** - current stage (x, y, z) position, in microns.
-  A cheap, on-demand sync primitive, not something to call before every
-  move (`get_image`/`move` already return position as part of their result).
-- **`move(x, y, backend, confirm)`** - move the XY stage to an absolute
-  position, returns the *actual* resulting position. XY-only, on purpose
-  (no absolute Z move is reachable from chat - crash risk into the sample).
-- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension)`** -
-  capture a real frame from the Baumer camera, paired with the exact
-  stage position it was taken at. Returns both the metadata and an
-  embedded image preview, so the model can actually see the picture, not
-  just a file path. `crop` (optional `{"x","y","width","height"}`
-  fractions of the full frame) restricts the embedded preview to a
-  region of interest instead of resending the whole frame; the full-res
-  file on disk is always uncropped. `max_dimension` overrides the
-  preview's default long-edge cap for that call.
+</div>
 
-`get_pos`/`move`/`get_image` all return `stage_revision`, a monotonic
-counter bumped whenever a call observes the stage at a different
-position than the last one this process saw - so a model holding an
-older result can tell "has the stage moved since then" (e.g. someone
-touched the joystick) without diffing raw coordinates itself.
-`get_image` additionally returns `frame_id`, a per-process counter
-identifying that specific capture.
-- **`get_move_history(limit)`** - every point `move()` has actually sent
-  the stage to this session, so "where have we already been" doesn't
-  need to be re-derived from conversation history.
+---
 
-`backend` is `"mock"` (default, safe, simulated) or `"sdk"` (real
-hardware - `move()`/`get_image()` require `confirm=True` for anything
-that touches real hardware). See `mcp_server/loop_tools.py`'s header
-comment for the full design rationale (why no `get_time()`, why no
-`stage_revision` yet, etc.).
+No NIS-Elements anywhere: the camera is reached directly via GenICam/GenTL, the
+stage via the Ti2 ActiveX SDK — both independent of whether NIS-Elements is even
+running. A core install ships a safe simulated stage, so the server runs on a
+laptop or in CI with zero hardware attached.
 
-No NIS-Elements involved anywhere - the camera is reached directly via
-GenICam/GenTL, and the stage via the Ti2 ActiveX SDK, both independent
-of whether NIS-Elements software is even running.
+## Contents
+
+- [Architecture](#architecture)
+- [The four tools](#the-four-tools)
+- [Install](#install)
+- [Run](#run)
+- [Three ways to drive it](#three-ways-to-drive-it)
+- [Hardware](#hardware)
+- [Versioning & license](#versioning--license)
+
+## Architecture
+
+```mermaid
+flowchart TD
+    CD["Claude Desktop / Claude Code"]
+    MA["harness/mcp_agent.py"]
+    EAA["eaa_integration/"]
+    AG["harness/agent.py"]
+
+    CD -->|"MCP / stdio"| SL
+    MA -->|"MCP / stdio"| SL
+    EAA -->|"MCP / stdio"| SL
+    SL["mcp_server/server_loop.py"] --> LT
+    AG -->|"direct import"| LT
+
+    LT["loop_tools.py: get_pos, move, get_image, get_move_history"]
+    LT --> MOCK["nis_mock: simulated stage, the default"]
+    LT --> SDK["nis_sdk: Ti2 ActiveX SDK"]
+    LT --> CAM["baumer_genicam: GenICam / GenTL"]
+
+    SDK -.-> HW1["Nikon Ti2-E stage"]
+    CAM -.-> HW2["Baumer VCXU-23C camera"]
+```
+
+## The four tools
+
+Kept minimal on purpose — calibration, historical-frame lookup, and the rest are
+things the model should reason out from `get_image`'s embedded picture, not a new
+tool per capability.
+
+| Tool | What it does |
+|---|---|
+| **`get_pos(backend)`** | Current stage `(x, y, z)` in microns. A cheap on-demand sync primitive — not something to call before every move, since `get_image` / `move` already return position with their result. |
+| **`move(x, y, backend, confirm)`** | Move the XY stage to an absolute position; returns the *actual* resulting position. XY-only on purpose — no absolute Z move is reachable from chat (crash risk into the sample). |
+| **`get_image(confirm, exposure_time_us, gain, crop, max_dimension)`** | Capture a real frame, paired with the exact stage position it was taken at. Returns metadata **and an embedded preview**, so the model actually sees the picture. `crop` restricts the preview to a region of interest; the full-res file on disk is always uncropped. |
+| **`get_move_history(limit)`** | Every point `move()` has sent the stage to this session — so "where have we already been" isn't re-derived from chat history. |
+
+`get_pos` / `move` / `get_image` all return **`stage_revision`**, a monotonic
+counter bumped whenever a call observes the stage somewhere new — so a model
+holding an older result can tell whether the stage moved since (someone touched
+the joystick) without diffing raw coordinates. `get_image` also returns
+**`frame_id`**, a per-process capture counter.
+
+`backend` is `"mock"` (default, safe, simulated) or `"sdk"` (real hardware).
+Anything touching real hardware requires `confirm=True`. See the header comment in
+[`mcp_server/loop_tools.py`](mcp_server/loop_tools.py) for the full design
+rationale (why no `get_time()`, why position is a return value and not ambient
+context, etc.).
 
 ## Install
 
-This is a normal installable package (`confocal-mcp`) with a console entry
-point. Dependencies are split into groups so a machine only pulls what it needs:
+An installable package (`confocal-mcp`) with a console entry point. Dependencies
+are split into groups so a machine only pulls what it needs:
 
 | Group | Pulls in | For |
 |---|---|---|
@@ -58,8 +94,8 @@ point. Dependencies are split into groups so a machine only pulls what it needs:
 | `harness` | `anthropic`, `python-dotenv` | the standalone Claude loops in `harness/` |
 | `all` | everything above | a full workstation |
 
-The real hardware backends are imported lazily, so a core-only install runs
-fine anywhere (CI, a laptop) - it just can't touch hardware.
+Real hardware backends are imported lazily, so a core-only install runs fine
+anywhere — it just can't touch hardware.
 
 ### From a source checkout
 
@@ -78,12 +114,12 @@ uv tool install "git+https://github.com/BioNanomics/microscope-agent[camera,sdk]
 
 ### Real stage backend (one extra step)
 
-`acquisition/backends/nis_sdk.py` imports `NkTi2Ax`, the Nikon Ti2 SDK's
-generated Python bindings - machine-generated (via `pywin32`'s
-`gencache`/`makepy` against the installed SDK), not pip-installable, and not in
-this repo. If it isn't already in `site-packages/`, let it regenerate against an
-installed Ti2 SDK, or copy it from another working environment on the same
-machine. Not needed for `backend="mock"`.
+[`acquisition/backends/nis_sdk.py`](acquisition/backends/nis_sdk.py) imports
+`NkTi2Ax`, the Nikon Ti2 SDK's generated Python bindings — machine-generated (via
+`pywin32`'s `gencache`/`makepy` against the installed SDK), not pip-installable,
+and not in this repo. If it isn't already in `site-packages/`, let it regenerate
+against an installed Ti2 SDK, or copy it from another working environment on the
+same machine. Not needed for `backend="mock"`.
 
 ## Run
 
@@ -92,77 +128,65 @@ confocal-mcp                       # installed console script
 python -m mcp_server.server_loop   # equivalent, from a source checkout
 ```
 
-Point an MCP client at it - Claude Desktop's `claude_desktop_config.json`, or a
+Point an MCP client at it — Claude Desktop's `claude_desktop_config.json`, or a
 project-level `.mcp.json` for Claude Code:
 
 ```json
 { "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
 ```
 
-Data (captures, move/frame history logs) is written under the current working
-directory when the server runs from an installed package - launch it from a
-stable location.
+Runtime data (captures, move/frame history logs) is written under the current
+working directory when the server runs from an installed package — launch it from
+a stable location, or set `CONFOCAL_MCP_DATA_DIR`.
 
-## Harness loop (`harness/agent.py`)
+## Three ways to drive it
 
-A second, independent way to drive the same tools - a small interactive
-CLI that calls Claude (Anthropic API) directly with tool use, importing
-`mcp_server/loop_tools.py`'s functions in-process rather than going
-through `server_loop.py`'s MCP/stdio protocol. `server_loop.py` is
-unaffected either way - use whichever fits: MCP for Claude Desktop/Code,
-this loop for a standalone script.
+All three exercise the same four tool functions — pick whichever fits.
 
-Requires `ANTHROPIC_API_KEY` set - either in a `.env` file at the repo
-root (copy the commented-out line in `.env`, fill in your real key; this
-file is gitignored and loaded automatically by `harness/agent.py`), as a
-regular environment variable, or via `ant auth login`. Real hardware
-(`backend="sdk"`, or any `get_image` call) always pauses for a live
-"y/N" approval at the terminal before executing, regardless of what the
-model requests - see `harness/agent.py`'s header comment for why. Old
-captured images are pruned from the model's context after a couple of
-turns (`harness/context.py`) so a long session doesn't keep resending
-every frame it has ever captured.
+| | How it reaches the tools | Use it when |
+|---|---|---|
+| **MCP client** (Claude Desktop/Code) | `confocal-mcp` over MCP/stdio | day-to-day use |
+| **`harness/agent.py`** | imports `loop_tools.py` in-process, calls Claude directly | simplest standalone script, one machine |
+| **`harness/mcp_agent.py`** | spawns `server_loop.py` as a subprocess, real MCP over stdio | testing the server itself, or a split harness/microscope setup |
+
+The two harness loops need `ANTHROPIC_API_KEY` (a repo-root `.env`, an env var, or
+`ant auth login`). Real hardware always pauses for a live `y/N` approval at the
+terminal before executing, whatever the model asks for. Old captured images are
+pruned from context after a couple of turns
+([`harness/context.py`](harness/context.py)) so long sessions don't keep
+resending every frame.
 
 ```
-python -m harness.agent
+python -m harness.agent        # in-process loop
+python -m harness.mcp_agent     # real MCP client/server boundary
 ```
 
-## MCP client harness (`harness/mcp_agent.py`)
+See **[`docs/mcp_harness.md`](docs/mcp_harness.md)** for the deep dive: how the
+current MCP protocol differs from most tutorials, why `confirm` is stripped from
+every tool schema before Claude sees it, the MCP↔Anthropic content-block
+conversion, and a real stdout/JSON-RPC bug this work found and fixed in
+`nis_mock.py`.
 
-A third way to drive the same tools - the real-MCP-protocol counterpart
-to `harness/agent.py`. Instead of importing `loop_tools.py` in-process,
-this one spawns `server_loop.py` as a separate subprocess and talks to
-it exactly the way Claude Desktop/Code do: real MCP over stdio, using
-the current MCP SDK (`mcp==2.0.0`, protocol version `2026-07-28`). Same
-`.env`/`ANTHROPIC_API_KEY` setup, same live "y/N" real-hardware approval
-gate, same image pruning via `harness/context.py` - just reached through
-an actual client/server boundary instead of a direct function call.
-
-```
-python -m harness.mcp_agent
-```
-
-See **`docs/mcp_harness.md`** for the full write-up: how the current MCP
-protocol differs from what most tutorials show, why `confirm` is
-stripped from every tool schema before Claude ever sees it, the MCP↔
-Anthropic content-block conversion, and a real stdout/JSON-RPC bug this
-work found and fixed in `nis_mock.py`.
+There's also **[`eaa_integration/`](eaa_integration/)** — the unmodified server
+wrapped as a tool inside [EAA (Experiment Automation
+Agents)](https://github.com/AdvancedPhotonSource/EAA), fully isolated in its own
+folder and venv.
 
 ## Hardware
 
-- **Stage/focus**: Nikon Ti2-E via the Ti2 ActiveX SDK (`nis_sdk.py`) -
-  real hardware, no NIS-Elements process required.
-- **Camera**: Baumer VCXU-23C via GenICam/GenTL (`baumer_genicam.py`) -
-  a separate industrial camera, not the confocal N-SPARC detector.
-  Only one application can hold it open at a time - close Baumer Camera
-  Explorer (or any other GenICam consumer) before running this.
+- **Stage / focus** — Nikon Ti2-E via the Ti2 ActiveX SDK
+  ([`nis_sdk.py`](acquisition/backends/nis_sdk.py)). Real hardware, no
+  NIS-Elements process required.
+- **Camera** — Baumer VCXU-23C via GenICam/GenTL
+  ([`baumer_genicam.py`](acquisition/backends/baumer_genicam.py)). A separate
+  industrial camera, *not* the confocal N-SPARC detector. Only one application can
+  hold it open at a time — close Baumer Camera Explorer (or any other GenICam
+  consumer) before running this.
 
-## Versioning
+## Versioning & license
 
-Versions follow [SemVer](https://semver.org/); see `CHANGELOG.md`. The current
-version is importable as `mcp_server.__version__` (from installed package
-metadata).
+Versions follow [SemVer](https://semver.org/); see
+[`CHANGELOG.md`](CHANGELOG.md). The current version is importable as
+`mcp_server.__version__` (from installed package metadata).
 
-## License
-
-MIT - see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).

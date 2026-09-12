@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "confocal-mcp"
 version = "0.1.0"
-description = "MCP server for driving a Nikon Ti2-E stage and a Baumer GenICam camera"
+description = "A minimal MCP server for driving a real Nikon Ti2-E microscope from an AI agent"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
