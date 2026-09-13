@@ -67,28 +67,15 @@ Z_COUNTS_PER_UM = 100.0
 MAX_XY_STEP_UM = 5000.0
 MAX_Z_STEP_UM = 50.0
 
-# Direct scalar properties making up an "optical configuration" (objective,
-# filters, light path, illumination) - confirmed present in NkTi2Ax.py's
-# INikonTi2AxMicroscope interface, same source as the stage properties
-# above. Used by get_optical_configuration()/apply_optical_configuration()
-# below - see acquisition/orchestration/imaging_profile.py for the
-# save/list/apply-by-experiment-name layer on top of these two methods.
-OPTICAL_CONFIG_PROPERTIES = [
-    "iNOSEPIECE",       # objective (turret slot 1-6)
-    "iDIC_PRISM",
-    "iDIC_POLARIZER",
-    "iANALYZER_POS",
-    "iANALYZER_SLOT",
-    "iLIGHTPATH",
-    "iCONDENSER",
-    "iOPTZOOM",
-    "iTURRET1POS", "iTURRET1SHUTTER",
-    "iTURRET2POS", "iTURRET2SHUTTER",
-    "iDLED1_POS", "iDLED1_SWITCH",
-    "iDLED2_POS", "iDLED2_SWITCH",
-    "iDLED3_POS", "iDLED3_SWITCH",
-    "iDLED4_POS", "iDLED4_SWITCH",
-]
+# There is deliberately no hardcoded list of "optical configuration"
+# properties here any more. One used to live at this spot
+# (OPTICAL_CONFIG_PROPERTIES) and it silently omitted iDIA_LAMP_Switch and
+# iDIA_LAMP_Pos, so get_optical_configuration() never recorded whether the
+# transmitted lamp was on - and every write to the iDLED* names it did list
+# was ignored, because this microscope's D-LEDI is not driven through the
+# Ti2 body. Both methods now enumerate whatever DataGet returns. See
+# acquisition/calibration/ti2_inventory.py for what the interface actually
+# reports per device, including which ones accept writes.
 
 # PFS offset units aren't calibrated to microns (unlike XY/Z - see the
 # module docstring), so nudge_pfs_offset's cap is expressed as a fraction
@@ -387,50 +374,76 @@ class NISSdk:
     # way an uncapped Z move is.
 
     def get_optical_configuration(self) -> dict:
-        """Snapshot the current optical/device configuration - objective
-        (nosepiece), DIC prism/polarizer, analyzer, light path, condenser,
-        zoom, both filter turrets, and the 4 D-LEDI illumination channels -
-        as a dict of raw SDK property values. Save this (e.g. to a JSON
-        file) and pass it to apply_optical_configuration() later to
-        reproduce the same setup.
+        """Snapshot every device property the microscope reports, as a dict
+        of raw SDK values keyed by property name (iLIGHTPATH,
+        iDIA_LAMP_Switch, iNOSEPIECE, ...). Save this (e.g. to a JSON file)
+        and pass it to apply_optical_configuration() to reproduce the setup.
 
-        Property semantics (e.g. whether iDLED1_POS is an intensity
-        percent or something else) are NOT independently calibrated the
-        way XY/Z/PFS units were (see this module's docstring for that
-        methodology) - this assumes reading then writing back the same
-        raw value reproduces the same NIS-Elements UI state, which is
-        reasonable since these are exactly the properties NIS's own
-        "Optical Configuration" presets are built from, but it hasn't
-        been verified against a known physical reference the way stage
-        position was.
+        Taken with one DataGet call, which fills an INikonTi2AxData object
+        with all ~90 properties at once. Pass None as its first argument -
+        it is declared [in,out] and win32com returns the filled object.
+        Constructing the object yourself does not work: the NikonTi2AxData
+        coclass is not registered (CoCreateInstance gives "Class not
+        registered").
+
+        This used to walk OPTICAL_CONFIG_PROPERTIES, a hardcoded list that
+        omitted iDIA_LAMP_Switch and iDIA_LAMP_Pos - so a saved config did
+        not record whether the transmitted lamp was on, which is the single
+        setting deciding whether a camera on the camera port sees anything
+        at all. Enumerating whatever DataGet returns removes the list, and
+        with it the chance of it drifting out of sync again.
+
+        Property semantics are NOT independently calibrated the way XY/Z
+        units were (see this module's docstring) - this assumes reading then
+        writing back the same raw value reproduces the same state.
         """
 
         def read(m):
-            return {name: getattr(m, name) for name in OPTICAL_CONFIG_PROPERTIES}
+            data = m.DataGet(None, 0)
+            values = {}
+            for name in sorted(getattr(type(data), "_prop_map_get_", {}) or {}):
+                try:
+                    values[name] = getattr(data, name)
+                except Exception:
+                    continue
+            return values
 
         return self._thread.call(read)
 
-    def apply_optical_configuration(self, config: dict) -> dict:
+    def apply_optical_configuration(self, config: dict,
+                                    include_motion: bool = False) -> dict:
         """Write back a config dict from get_optical_configuration().
 
-        Only keys in OPTICAL_CONFIG_PROPERTIES are applied - unknown keys
-        (e.g. from a config saved by a newer version of this code) are
-        silently ignored rather than erroring. Returns the read-back
-        value of every property actually applied.
+        Returns the read-back value of every property actually applied.
+        Properties that raise are recorded as None rather than aborting the
+        rest, and a write the microscope declines to act on shows up as a
+        read-back that differs from the requested value - the Ti2 ignores
+        such writes silently rather than raising (the D-LEDI channels and
+        the DIA/EPI shutters do this consistently on this workstation).
 
-        Switching the objective (iNOSEPIECE) changes working distance,
-        which may invalidate prior Z-safety assumptions for whatever
-        position you're at - this method never touches Z itself, that's
-        on the caller to handle deliberately afterward if needed.
+        Motion devices - stage XY/Z, the nosepiece, TIRF - are skipped
+        unless include_motion=True. get_optical_configuration() now returns
+        the full device set rather than a curated subset, so without this
+        guard restoring a lamp setting from a file would also drive the
+        stage across the slide as a side effect. Switching the objective
+        also changes working distance, which can invalidate Z-safety
+        assumptions for the current position; this method never moves Z on
+        its own unless you opt in.
         """
 
         def write(m):
             applied = {}
             for name, value in config.items():
-                if name not in OPTICAL_CONFIG_PROPERTIES:
+                if not include_motion and any(
+                        key in name.upper()
+                        for key in ("XPOSITION", "YPOSITION", "ZPOSITION",
+                                    "NOSEPIECE", "TIRF", "ZESCAPE", "RESET")):
                     continue
-                setattr(m, name, value)
-                applied[name] = getattr(m, name)
+                try:
+                    setattr(m, name, value)
+                    applied[name] = getattr(m, name)
+                except Exception:
+                    applied[name] = None
             return applied
 
         return self._thread.call(write)
