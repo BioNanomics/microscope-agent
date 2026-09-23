@@ -5,6 +5,7 @@
 #   python -m analysis.make_movie data/timelapse_20260921_163741_oats
 #   python -m analysis.make_movie <dir> --fps 24 --out front.mp4
 #   python -m analysis.make_movie <dir> --scale 0.5 --no-overlay
+#   python -m analysis.make_movie data/mosaic_<stamp>   # one frame per round
 #
 # A folder of 500 PNGs is data; a 20-second movie is something a person
 # can actually look at and see an organism move. This is the step that
@@ -33,6 +34,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
+import json
 from pathlib import Path
 
 import cv2
@@ -42,7 +45,46 @@ import numpy as np
 UM_PER_PX = 1.4901
 
 
+def _mosaic_rows(series_dir: Path) -> list[dict]:
+    """One row per stitched round of a mosaic run, shaped like frames.csv.
+
+    A round's time is the wall clock of its first tile, relative to round
+    0's first tile - the same "time since start" meaning t_seconds has in
+    a fixed-position series.
+    """
+    starts: dict[int, datetime.datetime] = {}
+    with (series_dir / "tiles.csv").open(encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            rnd = int(r["round"])
+            if rnd not in starts:
+                starts[rnd] = datetime.datetime.fromisoformat(r["wall_clock"])
+    if not starts:
+        return []
+    t0 = starts[min(starts)]
+    rows = []
+    for rnd in sorted(starts):
+        name = f"mosaic_{rnd:03d}.png"
+        if (series_dir / name).exists():
+            rows.append({"filename": name,
+                         "t_seconds": (starts[rnd] - t0).total_seconds()})
+    return rows
+
+
+def mosaic_um_per_px(series_dir: Path) -> float | None:
+    """Pixel size of a mosaic run's stitched images, or None if not a mosaic.
+
+    Runs from before mosaic_scale was recorded used the 0.5 default.
+    """
+    meta_path = series_dir / "mosaic.json"
+    if not meta_path.exists():
+        return None
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    return meta["um_per_px"] / meta.get("mosaic_scale", 0.5)
+
+
 def _rows(series_dir: Path) -> list[dict]:
+    if (series_dir / "mosaic.json").exists():
+        return _mosaic_rows(series_dir)
     with (series_dir / "frames.csv").open(encoding="utf-8") as fh:
         rows = [r for r in csv.DictReader(fh) if r.get("filename") and not r.get("error")]
     return [r for r in rows if (series_dir / r["filename"]).exists()]
@@ -168,14 +210,16 @@ def main() -> None:
     ap.add_argument("--out", type=Path, help="default: <series_dir>/movie.mp4")
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--scale", type=float, default=1.0, help="resize factor (0.5 = half size)")
-    ap.add_argument("--um-per-px", type=float, default=UM_PER_PX)
+    ap.add_argument("--um-per-px", type=float,
+                    help=f"default: from mosaic.json for a mosaic run, else {UM_PER_PX}")
     ap.add_argument("--no-overlay", action="store_true", help="omit timestamp and scale bar")
     ap.add_argument("--no-white-balance", action="store_true",
                     help="keep the camera's raw (blue-biased) colour")
     args = ap.parse_args()
 
     out = args.out or (args.series_dir / "movie.mp4")
-    build(args.series_dir, out, args.fps, args.scale, args.um_per_px,
+    um_per_px = args.um_per_px or mosaic_um_per_px(args.series_dir) or UM_PER_PX
+    build(args.series_dir, out, args.fps, args.scale, um_per_px,
           not args.no_overlay, not args.no_white_balance)
 
 

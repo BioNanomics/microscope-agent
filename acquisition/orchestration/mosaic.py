@@ -319,6 +319,10 @@ def run(grid: tuple[int, int], overlap: float, rounds: int, interval_s: float,
             "centre_um": [cx, cy], "exposure_us": exposure_us,
             "stage_to_image_matrix": M.tolist(),
             "covers_mm": [round(nx * step_x / 1000, 3), round(ny * step_y / 1000, 3)],
+            # The saved mosaic_NNN.png is resized by this factor, so its
+            # pixels are um_per_px / mosaic_scale - make_movie needs it
+            # to draw a scale bar that is true on the stitched image.
+            "mosaic_scale": mosaic_scale,
         }, indent=2), encoding="utf-8")
 
         # An out-of-band kill switch. Stopping a background shell does NOT
