@@ -334,9 +334,6 @@ class NISSdk:
         capped to PFS_MAX_OFFSET_STEP_FRACTION of the SDK's own reported
         valid offset range.
 
-        TODO(unconfirmed, 2026-08-10): writing iPFS_OFFSET while PFS is
-        actively enabled/locked has been observed to silently no-op on
-        real hardware - offset_before == offset_after, no exception - on
         Guarded by the e-stop like XY_Move/Z_Move: it is small and
         relative, but it still moves focus, and "only a little" is not a
         category the stop should recognise.
