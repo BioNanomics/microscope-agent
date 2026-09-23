@@ -51,6 +51,11 @@ import pythoncom
 import win32com.client
 import NkTi2Ax
 
+# Imported at module level so the guard cannot be skipped by an import
+# failing lazily inside a move. estop imports THIS module only inside
+# halt(), so there is no import cycle.
+from acquisition import estop
+
 # Raw-count-per-micron scale factors confirmed above.
 XY_COUNTS_PER_UM = 10.0
 Z_COUNTS_PER_UM = 100.0
@@ -183,6 +188,12 @@ class NISSdk:
         than MAX_XY_STEP_UM, or if the target is outside the stage's own
         reported travel range (XPosition/YPosition .Lower/.Higher).
         """
+        # E-STOP FIRST, before range checks, before anything. This is the
+        # lowest point every XY move passes through, which is the only
+        # place a stop can be effective against a caller that is already
+        # misbehaving - see acquisition/estop.py's header for the incident
+        # this exists because of.
+        estop.check()
         before = self.XY_GetPosition()
         x, y = to_plain_float(x), to_plain_float(y)
         step_um = ((x - before[0]) ** 2 + (y - before[1]) ** 2) ** 0.5
@@ -235,6 +246,10 @@ class NISSdk:
         nudge_pfs_offset() for routine focus adjustment when PFS is
         engaged, and reserve this for deliberate, small, checked steps.
         """
+        # E-stop before anything else - Z is the axis that can drive the
+        # objective into the sample, so this is the most important guard
+        # in the file.
+        estop.check()
         before = self.Z_GetPosition()
         z = to_plain_float(z)
         step_um = abs(z - before)
@@ -322,6 +337,13 @@ class NISSdk:
         TODO(unconfirmed, 2026-08-10): writing iPFS_OFFSET while PFS is
         actively enabled/locked has been observed to silently no-op on
         real hardware - offset_before == offset_after, no exception - on
+        Guarded by the e-stop like XY_Move/Z_Move: it is small and
+        relative, but it still moves focus, and "only a little" is not a
+        category the stop should recognise.
+
+        TODO(unconfirmed, 2026-08-10): writing iPFS_OFFSET while PFS is
+        actively enabled/locked has been observed to silently no-op on
+        real hardware - offset_before == offset_after, no exception - on
         two separate real-microscope tests (delta=100, PFS enabled/locked,
         offset mid-range at 18966/40000, PfsOffset.Control=1 and .Enabled=1
         so no obvious permission lockout visible from the SDK's own
@@ -334,6 +356,7 @@ class NISSdk:
         hardware. Failure mode observed so far is safe (no motion, no
         error) - not a functional feature yet, but not a hazard either.
         """
+        estop.check()
         delta_counts = to_plain_float(delta_counts)
 
         def do_nudge(m):
