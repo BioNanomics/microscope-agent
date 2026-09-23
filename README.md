@@ -99,9 +99,22 @@ project-level `.mcp.json` for Claude Code:
 { "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
 ```
 
-Data (captures, move/frame history logs) is written under the current working
-directory when the server runs from an installed package - launch it from a
-stable location.
+Data (captures, move/frame history logs, saved positions) is written under the
+current working directory - so launch the server from a stable location, or set
+`CONFOCAL_MCP_DATA_DIR` to pin it explicitly:
+
+```json
+{ "mcpServers": { "confocal": {
+    "command": "confocal-mcp",
+    "env": { "CONFOCAL_MCP_DATA_DIR": "D:\\path\\to\\your\\data" }
+} } }
+```
+
+Setting it is worth doing for any MCP client, because the client picks the
+working directory and the caller has no say in it - Claude Desktop on Windows
+launches servers in `C:\WINDOWS\system32`. When the working directory is
+unusable like that, the server falls back to `~/.confocal-mcp` and says so on
+stderr rather than failing at the first capture.
 
 ## Harness loop (`harness/agent.py`)
 
