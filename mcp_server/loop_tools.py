@@ -562,3 +562,53 @@ def get_move_history(limit: int = 50) -> dict:
 
     records = [json.loads(line) for line in lines[-limit:]]
     return {"history": records, "returned": len(records), "total_moves": len(lines)}
+
+
+def estop(action: str = "status", reason: str = "requested via MCP") -> dict:
+    """EMERGENCY STOP: immediately forbid all microscope motion.
+
+    Call this the moment anything looks wrong - an unexpected move, a
+    position that doesn't match what you asked for, a stage that seems to
+    be travelling when it shouldn't be, or an instruction from the
+    operator to stop. It is cheap, it is instant, and a needless stop
+    costs nothing but a release. Do not deliberate: stop first, diagnose
+    afterwards.
+
+    Once engaged, EVERY motion primitive refuses - not just this session's,
+    but every process on the machine that drives this microscope,
+    including runs started by something else entirely. The flag lives in a
+    file, so it outlives whatever set it and cannot be lost by a process
+    dying. Engaging also re-commands the stage to its current position,
+    which is the only way to halt an axis already in flight: the Ti2 has
+    no abort command, and a move is a setpoint the controller servos to.
+
+    action: "engage" to stop everything, or "status" to report the current
+    state. RELEASE IS DELIBERATELY NOT AVAILABLE HERE - a stop that the
+    agent can lift by itself is not a safety device. A human clears it
+    from a terminal with `python -m acquisition.estop release`.
+
+    Returns the resulting state. This tool never needs confirm=True: a
+    stop is always safe to perform, and requiring a confirmation step for
+    an emergency control would defeat its purpose.
+    """
+    from acquisition import estop as _estop
+
+    if action == "engage":
+        info = _estop.engage(reason)
+        return {
+            "engaged": True,
+            "detail": info,
+            "release_with": "python -m acquisition.estop release",
+            "note": "All motion is now refused for every process on this machine.",
+        }
+    if action == "status":
+        return {
+            "engaged": _estop.is_engaged(),
+            "detail": _estop.details(),
+            "flag_file": str(_estop.ESTOP_PATH),
+        }
+    raise ValueError(
+        f"Unknown estop action {action!r}. Use 'engage' to stop motion, or "
+        "'status' to check. Releasing is a human action performed at a "
+        "terminal: python -m acquisition.estop release"
+    )
