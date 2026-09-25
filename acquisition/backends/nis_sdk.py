@@ -52,8 +52,8 @@ import win32com.client
 import NkTi2Ax
 
 # Imported at module level so the guard cannot be skipped by an import
-# failing lazily inside a move. estop imports THIS module only inside
-# halt(), so there is no import cycle.
+# failing lazily inside a move. estop does not import this module, so
+# there is no import cycle.
 from acquisition import estop
 
 # Raw-count-per-micron scale factors confirmed above.

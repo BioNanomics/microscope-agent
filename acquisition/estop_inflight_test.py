@@ -22,7 +22,7 @@
 #
 # TEST B (XY). No halt is possible, so the stop is the flag checked
 # between move_xy's hops. A multi-hop move of XY_TEST_BY_UM in +X runs on
-# a worker thread; the flag is engaged (no halt) after ENGAGE_AFTER_S.
+# a worker thread; the flag is engaged after ENGAGE_AFTER_S.
 # Reported: how long the stage kept moving after the engage, and how far
 # it travelled in total. The stop is left ENGAGED - a human releases it.
 #
@@ -129,9 +129,9 @@ def test_xy():
         # Flag first: NISSdk has one COM thread, busy for the whole hop in
         # flight, so reading the position before engaging would delay the
         # engage by up to a hop - the very latency being measured.
-        estop.engage("estop_inflight_test", halt_stage=False)
+        estop.engage("estop_inflight_test")
         at_engage["t"] = time.perf_counter()
-        log("ENGAGED (flag only)")
+        log("ENGAGED")
 
     threading.Timer(ENGAGE_AFTER_S, engager).start()
     t0 = time.perf_counter()

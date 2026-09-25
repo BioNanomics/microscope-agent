@@ -44,10 +44,17 @@
 # refused move and a clear message, which is recoverable; the cost of
 # failing open is a driven objective.
 #
-# WHAT IT DOES NOT DO: it cannot un-issue a setpoint the controller has
-# already accepted. engage() therefore also calls halt(), which writes the
-# CURRENT position back as the target - with setpoint-based motion that is
-# the only available way to stop an axis already in motion.
+# WHAT IT DOES NOT DO: it cannot stop a move the controller has already
+# accepted. A move in flight runs to its end; the stop takes effect at the
+# next move. move_xy splits long moves into HOP_UM hops, so an XY move
+# stops within one hop (measured: 0.54 s, <= 4 mm).
+#
+# WHY NO HALT. engage() used to also write the current position back as
+# the target, to freeze an axis mid-travel. estop_inflight_test showed
+# that is worse than nothing: position reads are cached for the whole move
+# (XY and Z), so the "current" position is the START, and the write queues
+# behind the move. A 1 mm Z move ran to its end, then the halt drove Z all
+# the way back - a second move, issued by the stop. Never add it back.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -104,13 +111,10 @@ def check() -> None:
         )
 
 
-def engage(reason: str = "manual", halt_stage: bool = True) -> dict:
-    """Forbid all motion immediately, and try to halt anything in flight.
+def engage(reason: str = "manual") -> dict:
+    """Forbid all motion immediately. Sets the flag and nothing else.
 
-    The flag is written FIRST and the hardware halt attempted second: if
-    halting raises (SDK missing, COM busy, no hardware), the prohibition is
-    already in force. Doing it the other way round would leave a window
-    where a failed halt also meant no flag.
+    It never commands the stage - see WHY NO HALT in the module header.
     """
     info = {
         "engaged_at": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -119,12 +123,6 @@ def engage(reason: str = "manual", halt_stage: bool = True) -> dict:
     }
     ESTOP_PATH.parent.mkdir(parents=True, exist_ok=True)
     ESTOP_PATH.write_text(json.dumps(info, indent=2), encoding="utf-8")
-
-    if halt_stage:
-        try:
-            info["halt"] = halt()
-        except Exception as exc:                      # hardware may be absent
-            info["halt"] = f"not halted ({type(exc).__name__}: {exc})"
     return info
 
 
@@ -136,40 +134,15 @@ def release() -> None:
         pass
 
 
-def halt() -> str:
-    """Stop axes already in motion by re-commanding their current position.
-
-    The Ti2 exposes no abort: a move is a setpoint write and the stage
-    servos to it. Writing the position it is at right now is therefore the
-    only way to stop an axis mid-travel.
-
-    Deliberately bypasses nis_sdk's XY_Move/Z_Move - those now refuse to
-    run while the stop is engaged, and a stop primitive that the stop
-    itself blocks would be useless.
-    """
-    from acquisition.backends.nis_sdk import NISSdk, XY_COUNTS_PER_UM, Z_COUNTS_PER_UM
-
-    sdk = NISSdk()
-
-    def freeze(m):
-        x, y, z = m.iXPOSITION, m.iYPOSITION, m.iZPOSITION
-        m.iXPOSITION, m.iYPOSITION, m.iZPOSITION = x, y, z
-        return (x / XY_COUNTS_PER_UM, y / XY_COUNTS_PER_UM, z / Z_COUNTS_PER_UM)
-
-    x, y, z = sdk._thread.call(freeze)
-    return f"halted at x={x:.1f} y={y:.1f} z={z:.2f} um"
-
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Emergency stop for microscope motion.")
     ap.add_argument("action", choices=("engage", "release", "status"))
     ap.add_argument("--reason", default="manual")
-    ap.add_argument("--no-halt", action="store_true",
-                    help="set the flag only; do not try to halt the stage")
     args = ap.parse_args()
 
     if args.action == "engage":
-        info = engage(args.reason, halt_stage=not args.no_halt)
+        info = engage(args.reason)
         print("E-STOP ENGAGED")
         for k, v in info.items():
             print(f"  {k}: {v}")

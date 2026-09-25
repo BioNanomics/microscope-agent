@@ -578,9 +578,9 @@ def estop(action: str = "status", reason: str = "requested via MCP") -> dict:
     but every process on the machine that drives this microscope,
     including runs started by something else entirely. The flag lives in a
     file, so it outlives whatever set it and cannot be lost by a process
-    dying. Engaging also re-commands the stage to its current position,
-    which is the only way to halt an axis already in flight: the Ti2 has
-    no abort command, and a move is a setpoint the controller servos to.
+    dying. It cannot stop a move already in flight (the Ti2 has no abort):
+    that move runs to its end, and every move after it is refused. Long XY
+    moves are split into hops, so the stage stops within one hop.
 
     action: "engage" to stop everything, or "status" to report the current
     state. RELEASE IS DELIBERATELY NOT AVAILABLE HERE - a stop that the
