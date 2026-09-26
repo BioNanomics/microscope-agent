@@ -63,6 +63,7 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -70,6 +71,11 @@ from pathlib import Path
 #: directory - see the module header.
 ESTOP_PATH = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
                                  Path.home() / ".confocal-mcp" / "ESTOP"))
+
+
+#: Held by the running STOP panel for its whole life, so every process can
+#: tell whether one is already on screen. Windows frees it if the panel dies.
+PANEL_MUTEX = "Local\confocal-mcp-estop-panel"
 
 
 class EStopEngaged(RuntimeError):
@@ -133,6 +139,46 @@ def release() -> None:
     except FileNotFoundError:
         pass
 
+
+
+def panel_running() -> bool:
+    """True if a STOP panel is already on screen (Windows only)."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenMutexW(0x00100000, False, PANEL_MUTEX)  # SYNCHRONIZE
+    if h:
+        k32.CloseHandle(h)
+        return True
+    return False
+
+
+def launch_panel() -> None:
+    """Put the STOP panel on screen unless one is already there.
+
+    Called when a process first connects to the real stage, so the button
+    appears however a run was started - MCP server, mosaic, timelapse, a
+    one-liner. The 2026-09-21 run was started from a terminal, where no
+    panel existed; a safety control you have to remember to start is one
+    you will not have.
+
+    Detached, not a child: the panel must outlive this process. Failures
+    go to stderr - never stdout, which is the MCP JSON-RPC channel - and
+    never stop the caller. CONFOCAL_NO_ESTOP_PANEL=1 turns it off.
+    """
+    if os.environ.get("CONFOCAL_NO_ESTOP_PANEL"):
+        return
+    try:
+        if panel_running():
+            return
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        subprocess.Popen([sys.executable, "-m", "acquisition.estop_panel"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, creationflags=flags)
+    except Exception as exc:
+        print(f"[estop] could not start the STOP panel ({exc}). "
+              f"Stop manually with: python -m acquisition.estop engage", file=sys.stderr)
 
 
 def main() -> None:

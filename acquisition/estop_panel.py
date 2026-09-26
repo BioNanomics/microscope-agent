@@ -26,6 +26,10 @@
 # a few seconds, the cost of an accidental release is an unguarded
 # microscope. Engaging is also idempotent, so panic-clicking is harmless.
 #
+# ONE PANEL. It opens by itself whenever a process connects to the stage
+# (estop.launch_panel), so many processes ask for it. The first takes the
+# PANEL_MUTEX; any later copy sees it and exits without drawing.
+#
 # TKINTER because it ships with CPython: a safety control that depends on
 # `pip install` is a safety control that is missing on the day it matters.
 # ------------------------------------------------------------
@@ -133,11 +137,29 @@ class Panel:
         self.root.after(POLL_MS, self.tick)
 
 
+_mutex = None  # kept for the life of the process; Windows frees it on exit
+
+
+def _claim_single_instance() -> bool:
+    """Take the panel mutex; False if another panel already holds it."""
+    global _mutex
+    if sys.platform != "win32":
+        return True
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    _mutex = k32.CreateMutexW(None, False, estop.PANEL_MUTEX)
+    return k32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--no-topmost", action="store_true")
     ap.add_argument("--titlebar", action="store_true", help="keep a normal window frame")
     args = ap.parse_args()
+    if not _claim_single_instance():
+        print("a STOP panel is already open", file=sys.stderr)
+        return
     try:
         root = tk.Tk()
     except tk.TclError as exc:

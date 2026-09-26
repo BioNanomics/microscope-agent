@@ -156,6 +156,9 @@ def _get_com_thread() -> _ComThread:
     with _com_thread_lock:
         if _com_thread is None:
             _com_thread = _ComThread()
+            # First stage connection in this process: make sure the STOP
+            # button is on screen before anything can move.
+            estop.launch_panel()
         return _com_thread
 
 
