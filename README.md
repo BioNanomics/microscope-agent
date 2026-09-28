@@ -159,8 +159,8 @@ unaffected either way - use whichever fits: MCP for Claude Desktop/Code,
 this loop for a standalone script.
 
 Requires `ANTHROPIC_API_KEY` set - either in a `.env` file at the repo
-root (copy the commented-out line in `.env`, fill in your real key; this
-file is gitignored and loaded automatically by `harness/agent.py`), as a
+root (`cp .env.example .env`, fill in your real key; `.env` is gitignored
+and loaded automatically by the harnesses and the model trigger), as a
 regular environment variable, or via `ant auth login`. Real hardware
 (`backend="sdk"` on `move` or `get_image`) always pauses for a live
 "y/N" approval at the terminal before executing, regardless of what the
