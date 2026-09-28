@@ -54,6 +54,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   captures.
 - `CONFOCAL_MOCK_FRAME_PATH`: PNG the mock capture serves (defaults to the
   old `data/analysis/nd2_sample/frame_0.png` location).
+- `timelapse/` package (not MCP tools): `change_detector` (model-free
+  per-frame change score), `frame_audit` (CLI: gaps / intensity jumps /
+  stage shifts vs. specimen change in an existing sequence), `scheduler`
+  (adaptive slow/burst acquisition loop with hard caps and a one-time
+  real-hardware approval). See `docs/adaptive_timelapse.md`.
+- `tests/` (pytest, mock only) and a GitHub Actions CI workflow.
+- `numpy` is now a core dependency; new `test` optional group (pytest).
 
 ## [0.1.0] - 2026-08-31
 

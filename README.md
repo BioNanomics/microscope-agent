@@ -47,6 +47,30 @@ No NIS-Elements involved anywhere - the camera is reached directly via
 GenICam/GenTL, and the stage via the Ti2 ActiveX SDK, both independent
 of whether NIS-Elements software is even running.
 
+## Adaptive time-lapse (`timelapse/`)
+
+Not an MCP tool - a loop that sits beside the tools and calls `get_image()`
+itself. It captures on a slow interval, scores each frame for change with
+plain numpy (no model call), and switches to a fast burst when something
+happens. `timelapse/frame_audit.py` applies the same scores to an existing
+frame sequence to tell an acquisition gap, an illumination change or a
+stage bump from real specimen change. Design, safety model and status:
+[docs/adaptive_timelapse.md](docs/adaptive_timelapse.md).
+
+```
+python -m timelapse.scheduler --backend mock --slow 2 --burst 0.5 --burst-duration 5 --max-runtime 30
+python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
+```
+
+## Tests
+
+```
+pip install -e ".[test]"
+python -m pytest -q tests
+```
+
+Mock backend only - nothing touches hardware. CI runs the same on every push.
+
 ## Install
 
 This is a normal installable package (`confocal-mcp`) with a console entry
