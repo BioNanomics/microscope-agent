@@ -1,8 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  push:            # every branch, so a push runs even before a pull request exists
   pull_request:
 
 jobs:
@@ -21,7 +20,7 @@ jobs:
       # needed to import the Claude loops for the approval-gate tests (no
       # API key required - no model is ever called).
       - run: pip install -e ".[harness,test]"
-      - run: python -m pytest -q tests
+      - run: python -m pytest -v tests   # -v names each test in the log
       # The MCP server must import on a core-only install (the camera and
       # SDK stacks are lazy imports) - fail the build if that regresses.
       # (tests/test_mcp_server.py goes further and actually runs it.)
