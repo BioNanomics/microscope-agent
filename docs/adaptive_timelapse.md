@@ -100,7 +100,14 @@ frames where the change is:
 - `timelapse/change_detector.py`: the change score.
 - `timelapse/frame_audit.py`: the audit tool above.
 - `timelapse/scheduler.py`: the slow/burst loop, with the caps, the
-  one-time approval, and the trigger hook. Verified against the mock:
+  one-time approval, and the trigger hook.
+- `timelapse/model_trigger.py`: Claude behind that hook. At each trigger
+  it sees the frame before, the frame that fired, and the detector's
+  numbers, and answers "extend" or "ignore" with a one-sentence reason
+  that is logged. Capped calls per run, never more than one ask per 30 s,
+  and every failure (no key, no network, refusal, odd reply) is a
+  harmless "no opinion". Enabled with `--model-trigger`. Tested with a
+  fake model; the live call has not yet been run. Verified against the mock:
   swapping the served frame mid-run started a burst within one slow
   interval and returned to slow afterwards.
 - A test suite (24 tests, synthetic frames with known answers) and a CI
@@ -119,9 +126,9 @@ python -m timelapse.scheduler --backend mock --slow 2 --burst 0.5 --burst-durati
    stretches give the starting thresholds for the scheduler.
 2. **First real run, attended.** Short slow interval, low caps, someone
    watching, brightfield only.
-3. **Wire the model into the trigger hook.** Before and after previews
-   go to Claude with the detector's reason, and its answer extends or
-   ends the burst.
+3. **Run the model trigger live once.** The code is written and tested
+   against a fake; one real run with `--model-trigger` on the mock, with
+   an API key, confirms the call and shows what its reasons look like.
 4. **Decide on focus.** Long runs drift. Either the Perfect Focus System
    holds it, or the loop needs a bounded refocus step, which would be a
    new, gated capability.

@@ -20,7 +20,8 @@
 # when a burst starts or extends; that is the place to ask a vision
 # model "is this worth a longer look?" (return "extend" / "ignore"), or
 # to notify someone. The hook is off the fast path: it is called once per
-# trigger, not once per frame.
+# trigger, not once per frame. timelapse.model_trigger.ModelTrigger is
+# the Claude implementation of that hook (--model-trigger on the CLI).
 #
 # WHAT IT DOES NOT DO: move the stage, refocus, or change exposure. It
 # only calls get_image(). A stage/sample shift the detector sees is
@@ -144,6 +145,7 @@ class AdaptiveTimelapse:
         self.burst_until: float | None = None
         self.summary = RunSummary(events_path=str(self.events_path))
         self._t0: float | None = None
+        self._previous_image: str | None = None
 
     # -- state helpers -------------------------------------------------
     def _elapsed(self) -> float:
@@ -172,9 +174,11 @@ class AdaptiveTimelapse:
             self.summary.burst_captures += 1
 
         event = {"event": "capture", "frame_id": metadata.get("frame_id"), "image": metadata.get("image"),
+                 "previous_image": self._previous_image,
                  "position": metadata.get("position"), "score": score.as_dict()}
         self._emit(event)
         self.summary.frames.append(event)
+        self._previous_image = metadata.get("image")
 
         is_shift = score.shift_px > self.config.shift_threshold_px
         if is_shift:
@@ -286,6 +290,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--invert", action="store_true", help="bright specimen on dark background (fluorescence)")
     ap.add_argument("--events", type=Path, default=None, help="events JSONL path (default: logs/timelapse_events.jsonl)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit without capturing")
+    ap.add_argument("--model-trigger", action="store_true",
+                    help="ask Claude at each trigger whether to extend or end the burst (needs API credentials)")
+    ap.add_argument("--model-max-calls", type=int, default=50, help="cap on model calls per run")
     args = ap.parse_args(argv)
 
     config = TimelapseConfig(
@@ -303,7 +310,11 @@ def main(argv: list[str] | None = None) -> int:
         print("Not approved. Nothing captured.")
         return 2
 
-    summary = AdaptiveTimelapse(config).run()
+    on_trigger = None
+    if args.model_trigger:
+        from timelapse.model_trigger import ModelTrigger
+        on_trigger = ModelTrigger(max_calls=args.model_max_calls)
+    summary = AdaptiveTimelapse(config, on_trigger=on_trigger).run()
     print(f"done: {summary.stop_reason}; {summary.captures} captures ({summary.burst_captures} in {summary.bursts} bursts), "
           f"{summary.shifts} shifts, {summary.elapsed_s:.0f}s. Events: {summary.events_path}")
     return 0

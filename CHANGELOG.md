@@ -33,7 +33,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   per-frame change score), `frame_audit` (CLI: gaps / intensity jumps /
   stage shifts vs. specimen change in an existing sequence), `scheduler`
   (adaptive slow/burst acquisition loop with hard caps and a one-time
-  real-hardware approval). See `docs/adaptive_timelapse.md`.
+  real-hardware approval), `model_trigger` (Claude behind the scheduler's
+  trigger hook: extend or end a burst from the before/after frames, with
+  call caps and fail-safe "no opinion"). See `docs/adaptive_timelapse.md`.
 - `tests/` (pytest, mock only) and a GitHub Actions CI workflow. Includes a
   protocol-level test that spawns `mcp_server.server_loop` as a subprocess,
   asserts the exact tool set, and drives every tool over MCP stdio. Also

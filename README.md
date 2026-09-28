@@ -65,6 +65,7 @@ stage bump from real specimen change. Design, safety model and status:
 
 ```
 python -m timelapse.scheduler --backend mock --slow 2 --burst 0.5 --burst-duration 5 --max-runtime 30
+python -m timelapse.scheduler --backend mock --model-trigger ...   # Claude judges each trigger (needs API credentials)
 python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
 ```
 
