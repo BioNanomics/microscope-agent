@@ -109,9 +109,10 @@ frames where the change is:
   harmless "no opinion". Enabled with `--model-trigger`. Verified live on
   the mock on 2026-09-28: at a synthetic shrink event the model answered
   "extend" and gave the right reason (specimen contracted, no field shift
-  or illumination change). One call took about 7 s, during which the
-  burst loop waits - fine at a 5 s burst interval, but the call should
-  move to a background thread before bursts get faster than that. Verified against the mock:
+  or illumination change). The call runs on a background thread: a
+  second live run showed burst spacing held exactly while the model took
+  9 s to answer. A reply that lands after its burst has ended is logged
+  as late and changes nothing. Verified against the mock:
   swapping the served frame mid-run started a burst within one slow
   interval and returned to slow afterwards.
 - A test suite (24 tests, synthetic frames with known answers) and a CI
@@ -130,10 +131,7 @@ python -m timelapse.scheduler --backend mock --slow 2 --burst 0.5 --burst-durati
    stretches give the starting thresholds for the scheduler.
 2. **First real run, attended.** Short slow interval, low caps, someone
    watching, brightfield only.
-3. **Move the model call off the capture thread.** It blocks the burst
-   loop for the seconds it takes; a background thread that applies the
-   answer when it arrives keeps burst timing exact.
-4. **Decide on focus.** Long runs drift. Either the Perfect Focus System
+3. **Decide on focus.** Long runs drift. Either the Perfect Focus System
    holds it, or the loop needs a bounded refocus step, which would be a
    new, gated capability.
 

@@ -131,3 +131,108 @@ def test_cli_dry_run_prints_plan(capsys):
     assert main(["--dry-run", "--backend", "sdk", "--slow", "30"]) == 0
     out = capsys.readouterr().out
     assert "REAL HARDWARE" in out and "30s" in out
+
+
+# -- background consults --------------------------------------------------------
+
+class ManualExecutor:
+    """Executor whose futures complete only when the test says so."""
+
+    def __init__(self):
+        self.futures = []
+
+    def submit(self, fn, *args):
+        from concurrent.futures import Future
+        f = Future()
+        f._fn_args = (fn, args)
+        self.futures.append(f)
+        return f
+
+    def resolve(self, i, value=None, exc=None):
+        f = self.futures[i]
+        if exc is not None:
+            f.set_exception(exc)
+        else:
+            f.set_result(value)
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        pass
+
+
+def _shrink_run(write_frame, tmp_path, max_captures):
+    clock = FakeClock()
+    quiet = [write_frame(f"q{i}.png", seed=i) for i in range(6)]
+    shrunk = [write_frame(f"s{i}.png", radius=10.0, seed=100 + i) for i in range(30)]
+    src = FrameSource(clock, quiet + shrunk)
+    ex = ManualExecutor()
+    calls = []
+    tl = AdaptiveTimelapse(_config(tmp_path, max_captures=max_captures), capture=src,
+                           on_trigger=lambda e, m, s: calls.append(e["frame_id"]),
+                           clock=clock, sleep=clock.sleep, log=lambda s: None,
+                           consult_in_background=True, executor=ex)
+    return tl, src, ex, clock
+
+
+def test_background_consult_does_not_block_burst_timing(write_frame, tmp_path):
+    tl, src, ex, clock = _shrink_run(write_frame, tmp_path, max_captures=9)
+    tl.run()
+    gaps = [b - a for a, b in zip(src.captured_at, src.captured_at[1:])]
+    assert gaps[6] == 5.0 and gaps[7] == 5.0       # burst spacing held while the consult was pending
+    assert len(ex.futures) >= 1                      # the hook was submitted, never awaited
+
+
+def test_background_extend_is_applied_at_next_step(write_frame, tmp_path):
+    tl, src, ex, clock = _shrink_run(write_frame, tmp_path, max_captures=100)
+    tl._t0 = clock()
+    for _ in range(7):
+        tl.step()                                    # 6 quiet + first shrunk -> burst_start, consult pending
+    assert tl.mode == "burst" and len(ex.futures) == 1
+    until_before = tl.burst_until
+    ex.resolve(0, "extend")
+    clock.t += 5.0
+    tl.step()                                        # next frame also fires the detector - must not undo the extension
+    assert tl.burst_until == until_before + tl.config.burst_duration_s
+    kinds = [json.loads(l)["event"] for l in tl.config.events_path.read_text().splitlines()]
+    assert kinds.count("burst_extend") >= 1
+
+
+def test_background_ignore_ends_burst_and_late_reply_is_logged(write_frame, tmp_path):
+    tl, src, ex, clock = _shrink_run(write_frame, tmp_path, max_captures=100)
+    tl._t0 = clock()
+    for _ in range(7):
+        tl.step()
+    assert tl.mode == "burst"
+    ex.resolve(0, "ignore")
+    clock.t += 5.0
+    tl.step()
+    events = [json.loads(l) for l in tl.config.events_path.read_text().splitlines()]
+    assert any(e["event"] == "burst_end" and "ignore" in e["detail"] for e in events)
+
+    # Keep stepping until the specimen's new size is the baseline and the
+    # loop has settled back to slow on its own.
+    for _ in range(12):
+        clock.t += 5.0
+        tl.step()
+    assert tl.mode == "slow"
+    # Consults still outstanding from those bursts now answer "extend" -
+    # too late to matter, and logged as such.
+    for i, f in enumerate(ex.futures):
+        if not f.done():
+            ex.resolve(i, "extend")
+    clock.t += 60.0
+    tl.step()
+    assert tl.mode == "slow"
+    events = [json.loads(l) for l in tl.config.events_path.read_text().splitlines()]
+    assert any(e["event"] == "consult_late" for e in events)
+
+
+def test_background_consult_exception_is_logged_not_raised(write_frame, tmp_path):
+    tl, src, ex, clock = _shrink_run(write_frame, tmp_path, max_captures=100)
+    tl._t0 = clock()
+    for _ in range(7):
+        tl.step()
+    ex.resolve(0, exc=RuntimeError("model down"))
+    clock.t += 5.0
+    tl.step()                                        # must not raise
+    events = [json.loads(l) for l in tl.config.events_path.read_text().splitlines()]
+    assert any(e["event"] == "consult_failed" and "model down" in e["detail"] for e in events)

@@ -28,6 +28,15 @@
 # logged as a "shift" event and does NOT start a burst - that is not
 # biology, and burst-imaging a drifted field is wasted light.
 #
+# THE HOOK CAN RUN IN THE BACKGROUND (consult_in_background=True, on by
+# default from the CLI): a model call takes seconds, and a burst at a
+# short interval must not stall while it thinks. The call is submitted to
+# a single worker thread and the capture loop carries on; the answer is
+# applied at the next step. "extend" then lengthens whatever burst is
+# still running; "ignore" ends it; an answer that lands after the burst
+# has already ended is logged as late and changes nothing. One worker, so
+# consults are serialized and never pile up.
+#
 # HARD CAPS (max_captures, max_runtime_s) always end the run, whatever
 # mode it is in. On real hardware the run is a single up-front approval
 # of the whole plan (see main()): the per-call confirm=True that
@@ -45,6 +54,7 @@ import argparse
 import json
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -131,11 +141,18 @@ class AdaptiveTimelapse:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         log: Callable[[str], None] = print,
+        consult_in_background: bool = False,
+        executor=None,
     ):
         config.validate()
         self.config = config
         self.capture = capture or _default_capture(config)
         self.on_trigger = on_trigger
+        self.consult_in_background = consult_in_background
+        # Anything with .submit(fn, *args) -> Future and .shutdown(); tests
+        # inject a manual one so replies land exactly when they choose.
+        self._executor = executor
+        self._pending: list[tuple[Future, int | None]] = []
         self.clock = clock
         self.sleep = sleep
         self.log = log
@@ -166,6 +183,7 @@ class AdaptiveTimelapse:
     # -- one iteration ---------------------------------------------------
     def step(self) -> dict:
         """Capture one frame, score it, update mode. Returns the capture event."""
+        self._apply_pending_consults()
         metadata = self.capture()
         score = self.detector.score_array(load_gray(metadata["image"]))
         now = self.clock()
@@ -196,10 +214,12 @@ class AdaptiveTimelapse:
                     self._emit({"event": "burst_start", "frame_id": metadata.get("frame_id"), "detail": score.reason})
                     self._consult(event, metadata, score)
             else:
-                self.burst_until = now + self.config.burst_duration_s
+                # Never shorten a window the model has already lengthened.
+                self.burst_until = max(self.burst_until or 0.0, now + self.config.burst_duration_s)
                 self._emit({"event": "burst_extend", "frame_id": metadata.get("frame_id"), "detail": score.reason})
                 self._consult(event, metadata, score)
 
+        self._apply_pending_consults()
         if self.mode == "burst" and self.burst_until is not None and now >= self.burst_until:
             self._end_burst("burst window elapsed")
         return event
@@ -207,12 +227,42 @@ class AdaptiveTimelapse:
     def _consult(self, event: dict, metadata: dict, score: ChangeScore) -> None:
         if self.on_trigger is None:
             return
-        decision = self.on_trigger(event, metadata, score)
+        if not self.consult_in_background:
+            self._apply_decision(self.on_trigger(event, metadata, score), event.get("frame_id"), late_ok=False)
+            return
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="timelapse-consult")
+        future = self._executor.submit(self.on_trigger, event, metadata, score)
+        self._pending.append((future, event.get("frame_id")))
+
+    def _apply_pending_consults(self) -> None:
+        still_pending = []
+        for future, frame_id in self._pending:
+            if not future.done():
+                still_pending.append((future, frame_id))
+                continue
+            exc = future.exception()
+            if exc is not None:
+                self._emit({"event": "consult_failed", "frame_id": frame_id,
+                            "detail": f"{type(exc).__name__}: {exc}"})
+                continue
+            self._apply_decision(future.result(), frame_id, late_ok=True)
+        self._pending = still_pending
+
+    def _apply_decision(self, decision: str | None, frame_id: int | None, late_ok: bool) -> None:
+        if decision not in ("extend", "ignore"):
+            return
+        if self.mode != "burst":
+            if late_ok:
+                self._emit({"event": "consult_late", "frame_id": frame_id,
+                            "detail": f"on_trigger said {decision} after the burst had ended - no change"})
+            return
         if decision == "ignore":
-            self._end_burst("on_trigger said ignore")
-        elif decision == "extend" and self.burst_until is not None:
-            self.burst_until += self.config.burst_duration_s
-            self._emit({"event": "burst_extend", "detail": "on_trigger said extend"})
+            self._end_burst(f"on_trigger said ignore (frame {frame_id})")
+        elif self.burst_until is not None:
+            # A full extra window from now or from the current end, whichever is later.
+            self.burst_until = max(self.burst_until, self.clock()) + self.config.burst_duration_s
+            self._emit({"event": "burst_extend", "frame_id": frame_id, "detail": "on_trigger said extend"})
 
     def _end_burst(self, why: str) -> None:
         self.mode = "slow"
@@ -244,6 +294,12 @@ class AdaptiveTimelapse:
         except KeyboardInterrupt:
             self.summary.stop_reason = "interrupted"
         finally:
+            if self._executor is not None:
+                # A reply that lands after the run is over is worthless; don't wait for it.
+                self._executor.shutdown(wait=False, cancel_futures=True)
+                if self._pending:
+                    self._emit({"event": "consult_abandoned", "detail": f"{len(self._pending)} pending at stop"})
+                    self._pending = []
             if self.mode == "burst":
                 self._end_burst("run ended")
             self.summary.elapsed_s = self._elapsed()
@@ -314,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.model_trigger:
         from timelapse.model_trigger import ModelTrigger
         on_trigger = ModelTrigger(max_calls=args.model_max_calls)
-    summary = AdaptiveTimelapse(config, on_trigger=on_trigger).run()
+    summary = AdaptiveTimelapse(config, on_trigger=on_trigger, consult_in_background=True).run()
     print(f"done: {summary.stop_reason}; {summary.captures} captures ({summary.burst_captures} in {summary.bursts} bursts), "
           f"{summary.shifts} shifts, {summary.elapsed_s:.0f}s. Events: {summary.events_path}")
     return 0
