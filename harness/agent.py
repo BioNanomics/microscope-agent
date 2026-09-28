@@ -79,7 +79,7 @@ Safety rules:
 - Always use backend="mock" (the default) unless the user has clearly \
 asked you to control the real, physical microscope. Only pass \
 backend="sdk" when real hardware action is actually intended.
-- Every real-hardware action (get_image always; move when \
+- Every real-hardware action (get_image and move when \
 backend="sdk") pauses for a live human approval at the terminal before \
 it executes - expect that pause, and explain to the user what you're \
 about to do and why before calling it, so the approval makes sense to \
@@ -100,14 +100,20 @@ TOOLS = [
     {
         "name": "get_image",
         "description": (
-            "Capture one frame from the real camera, paired with the exact "
-            "stage position it was taken at. Always touches real hardware - "
-            "pauses for human approval before executing. Optionally crop and/or "
-            "resize the embedded preview."
+            "Capture one frame from the camera, paired with the exact "
+            "stage position it was taken at. backend=\"sdk\" (default) is the "
+            "real camera and pauses for human approval before executing; "
+            "backend=\"mock\" returns a simulated frame with no hardware. "
+            "Optionally crop and/or resize the embedded preview."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "backend": {
+                    "type": "string",
+                    "enum": ["mock", "sdk"],
+                    "description": "\"sdk\" for the real camera (default), \"mock\" for a simulated frame.",
+                },
                 "exposure_time_us": {
                     "type": ["number", "null"],
                     "description": "Camera exposure time in microseconds. Omit to keep the current setting.",
@@ -213,9 +219,11 @@ def _execute_tool(name: str, tool_input: dict) -> tuple[list[dict], bool]:
     tool_input = dict(tool_input)
     try:
         if name == "get_image":
-            if not _confirm_real_hardware_action(name, tool_input):
-                return _text_content("User declined this real-hardware capture. Not executed."), True
-            metadata, image = loop_tools.get_image(confirm=True, **tool_input)
+            if tool_input.get("backend", "sdk") == "sdk":
+                if not _confirm_real_hardware_action(name, tool_input):
+                    return _text_content("User declined this real-hardware capture. Not executed."), True
+                tool_input["confirm"] = True
+            metadata, image = loop_tools.get_image(**tool_input)
             image_content = image.to_image_content()
             return [
                 {"type": "text", "text": json.dumps(metadata)},

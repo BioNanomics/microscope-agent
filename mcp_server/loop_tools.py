@@ -84,8 +84,11 @@
 #
 # WHY get_image() REQUIRES confirm=True: unlike get_pos()/move(), it
 # fires a real camera - same safety-gate pattern used for anything that
-# touches real hardware, even when (as here) there's no backend="mock"
-# equivalent to fall back to.
+# touches real hardware. backend="sdk" (the default - a capture is real
+# hardware unless the caller says otherwise) requires confirm=True;
+# backend="mock" routes to nis_mock.MockNIS.capture() (copies a sample
+# frame to data/captures/) so the capture-analyze-decide loop can be
+# developed and tested off the microscope PC with no camera attached.
 #
 # WHY get_image() RETURNS [metadata, image] INSTEAD OF JUST A PATH: MCP
 # tool results can embed real image content (base64 + mime type), not
@@ -449,6 +452,7 @@ def get_image(
     gain: float | None = None,
     crop: dict | None = None,
     max_dimension: int | None = None,
+    backend: str = "sdk",
 ) -> list:
     """Grab one frame from the Baumer GenICam camera (see
     acquisition.backends.baumer_genicam.BaumerGenICam) and return it
@@ -473,11 +477,16 @@ def get_image(
 
     No NIS-Elements involved - connects directly to the camera via its
     GenTL producer (see BaumerGenICam/find_cti_files), independent of any
-    NIS-Elements process. Real hardware only (no mock equivalent - there's
-    nothing to simulate a camera trigger against) - requires confirm=True,
-    same safety-gate pattern as every other real-hardware-touching tool in
-    this repo. Position is read via backend="sdk" (Ti2 ActiveX SDK), the
-    same NIS-Elements-independent hardware path move()/get_pos() use.
+    NIS-Elements process. backend="sdk" (default) is real hardware and
+    requires confirm=True, same safety-gate pattern as every other
+    real-hardware-touching tool in this repo; position is then read via
+    the Ti2 ActiveX SDK, the same NIS-Elements-independent path
+    move()/get_pos() use. backend="mock" needs no confirm: it copies a
+    sample frame via nis_mock.MockNIS.capture() (override the source
+    file with CONFOCAL_MOCK_FRAME_PATH) and reads the mock stage's
+    position, so everything downstream of a capture - preview, crop,
+    frame_id, frame history - can be exercised with no camera attached.
+    exposure_time_us/gain are accepted and ignored on the mock.
 
     exposure_time_us, gain: optional - if given, applied via
     BaumerGenICam.set_settings() before capturing (raises ValueError if
@@ -509,19 +518,18 @@ def get_image(
     already-small region can afford more pixels). Omit to use the
     default.
     """
-    if not confirm:
-        raise PermissionError(
-            "get_image fires a real camera and requires confirm=True. "
-            "Refusing to proceed without explicit confirmation."
-        )
+    _require_confirm_for_sdk(backend, confirm)
     if crop is not None:
         _validate_crop(crop)
 
-    camera = _get_camera()
-    if exposure_time_us is not None or gain is not None:
-        camera.set_settings(exposure_time_us=exposure_time_us, gain=gain)
-    image_path = camera.capture()
-    pos = get_pos(backend="sdk")
+    if backend == "mock":
+        image_path = _get_backend("mock").capture()
+    else:
+        camera = _get_camera()
+        if exposure_time_us is not None or gain is not None:
+            camera.set_settings(exposure_time_us=exposure_time_us, gain=gain)
+        image_path = camera.capture()
+    pos = get_pos(backend=backend)
 
     metadata = {
         "image": str(image_path),
@@ -531,6 +539,7 @@ def get_image(
         "captured_at": pos["measured_at"],
         "monotonic_ms": pos["monotonic_ms"],
         "crop": crop,
+        "backend": backend,
     }
     _append_frame_history(metadata)
     preview = _make_preview_image(

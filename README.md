@@ -14,9 +14,11 @@ Exactly 4, by design - kept deliberately minimal:
 - **`move(x, y, backend, confirm)`** - move the XY stage to an absolute
   position, returns the *actual* resulting position. XY-only, on purpose
   (no absolute Z move is reachable from chat - crash risk into the sample).
-- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension)`** -
-  capture a real frame from the Baumer camera, paired with the exact
-  stage position it was taken at. Returns both the metadata and an
+- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension, backend)`** -
+  capture a frame from the Baumer camera (`backend="sdk"`, the default)
+  or a simulated one from the mock (`backend="mock"`, no hardware, no
+  `confirm` needed - set `CONFOCAL_MOCK_FRAME_PATH` to choose the PNG it
+  serves), paired with the exact stage position it was taken at. Returns both the metadata and an
   embedded image preview, so the model can actually see the picture, not
   just a file path. `crop` (optional `{"x","y","width","height"}`
   fractions of the full frame) restricts the embedded preview to a
@@ -129,7 +131,7 @@ Requires `ANTHROPIC_API_KEY` set - either in a `.env` file at the repo
 root (copy the commented-out line in `.env`, fill in your real key; this
 file is gitignored and loaded automatically by `harness/agent.py`), as a
 regular environment variable, or via `ant auth login`. Real hardware
-(`backend="sdk"`, or any `get_image` call) always pauses for a live
+(`backend="sdk"` on `move` or `get_image`) always pauses for a live
 "y/N" approval at the terminal before executing, regardless of what the
 model requests - see `harness/agent.py`'s header comment for why. Old
 captured images are pruned from the model's context after a couple of
