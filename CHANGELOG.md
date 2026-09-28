@@ -34,7 +34,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   stage shifts vs. specimen change in an existing sequence), `scheduler`
   (adaptive slow/burst acquisition loop with hard caps and a one-time
   real-hardware approval). See `docs/adaptive_timelapse.md`.
-- `tests/` (pytest, mock only) and a GitHub Actions CI workflow.
+- `tests/` (pytest, mock only) and a GitHub Actions CI workflow. Includes a
+  protocol-level test that spawns `mcp_server.server_loop` as a subprocess,
+  asserts the exact tool set, and drives every tool over MCP stdio.
 - `numpy` (2.4.x, the last line that supports Python 3.11) is now a core dependency; new `test` optional group (pytest).
 
 ### Fixed
