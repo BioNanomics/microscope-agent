@@ -20,7 +20,7 @@ dependencies = [
     "mcp==2.0.0",
     "Pillow==12.3.0",
     "PyYAML==6.0.3",
-    "numpy==2.5.3",
+    "numpy==2.4.6",
 ]
 
 [project.optional-dependencies]

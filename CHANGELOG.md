@@ -35,7 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   (adaptive slow/burst acquisition loop with hard caps and a one-time
   real-hardware approval). See `docs/adaptive_timelapse.md`.
 - `tests/` (pytest, mock only) and a GitHub Actions CI workflow.
-- `numpy` is now a core dependency; new `test` optional group (pytest).
+- `numpy` (2.4.x, the last line that supports Python 3.11) is now a core dependency; new `test` optional group (pytest).
 
 ### Fixed
 - `get_optical_configuration()` recorded no illumination state. It walked
