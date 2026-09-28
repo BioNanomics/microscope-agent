@@ -20,6 +20,7 @@ dependencies = [
     "mcp==2.0.0",
     "Pillow==12.3.0",
     "PyYAML==6.0.3",
+    "numpy==2.5.3",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,10 @@ camera = [
 sdk = [
     "pywin32==312",
 ]
+# Running the test suite (tests/ - mock backend only, no hardware).
+test = [
+    "pytest==9.1.1",
+]
 # The standalone Claude harness loops in harness/ (not the MCP server).
 harness = [
     "anthropic==1.0.0",
@@ -42,7 +47,7 @@ harness = [
 ]
 # Everything, for a full workstation install.
 all = [
-    "confocal-mcp[camera,sdk,harness]",
+    "confocal-mcp[camera,sdk,harness,test]",
 ]
 
 [project.scripts]
@@ -53,4 +58,4 @@ Homepage = "https://github.com/BioNanomics/microscope-agent"
 Repository = "https://github.com/BioNanomics/microscope-agent"
 
 [tool.hatch.build.targets.wheel]
-packages = ["mcp_server", "acquisition", "harness"]
+packages = ["mcp_server", "acquisition", "harness", "timelapse"]
