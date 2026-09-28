@@ -21,6 +21,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   `--confirm`, skips stage/objective/TIRF unless `--include-motion`, and polls
   the read-back rather than reading once (several devices report the old value
   for up to a second after a successful write).
+- `get_image(backend=...)`: `backend="mock"` returns a simulated frame via
+  `MockNIS.capture()` with no camera attached and no `confirm`, so capture
+  logic can be developed off the microscope PC. `backend="sdk"` (the
+  default) is unchanged and still requires `confirm=True`. The metadata dict
+  now carries `backend`. Both harnesses skip the hardware gate for mock
+  captures.
+- `CONFOCAL_MOCK_FRAME_PATH`: PNG the mock capture serves (defaults to the
+  old `data/analysis/nd2_sample/frame_0.png` location).
+- `timelapse/` package (not MCP tools): `change_detector` (model-free
+  per-frame change score), `frame_audit` (CLI: gaps / intensity jumps /
+  stage shifts vs. specimen change in an existing sequence), `scheduler`
+  (adaptive slow/burst acquisition loop with hard caps and a one-time
+  real-hardware approval). See `docs/adaptive_timelapse.md`.
+- `tests/` (pytest, mock only) and a GitHub Actions CI workflow.
+- `numpy` is now a core dependency; new `test` optional group (pytest).
 
 ### Fixed
 - `get_optical_configuration()` recorded no illumination state. It walked
@@ -46,21 +61,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   back to `~/.confocal-mcp` with a warning on stderr. Setting
   `CONFOCAL_MCP_DATA_DIR` is still honoured as-is, and a normal source
   checkout still resolves to the checkout directory.
-- `get_image(backend=...)`: `backend="mock"` returns a simulated frame via
-  `MockNIS.capture()` with no camera attached and no `confirm`, so capture
-  logic can be developed off the microscope PC. `backend="sdk"` (the
-  default) is unchanged and still requires `confirm=True`. The metadata dict
-  now carries `backend`. Both harnesses skip the hardware gate for mock
-  captures.
-- `CONFOCAL_MOCK_FRAME_PATH`: PNG the mock capture serves (defaults to the
-  old `data/analysis/nd2_sample/frame_0.png` location).
-- `timelapse/` package (not MCP tools): `change_detector` (model-free
-  per-frame change score), `frame_audit` (CLI: gaps / intensity jumps /
-  stage shifts vs. specimen change in an existing sequence), `scheduler`
-  (adaptive slow/burst acquisition loop with hard caps and a one-time
-  real-hardware approval). See `docs/adaptive_timelapse.md`.
-- `tests/` (pytest, mock only) and a GitHub Actions CI workflow.
-- `numpy` is now a core dependency; new `test` optional group (pytest).
 
 ## [0.1.0] - 2026-08-31
 

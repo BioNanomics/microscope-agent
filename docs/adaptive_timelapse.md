@@ -45,6 +45,12 @@ recover, and the honest answer is that the interval was too coarse.
 
 ## The proposal: image slowly, look cheaply, image fast when it matters
 
+The fixed-interval recorder on this branch,
+`acquisition/orchestration/timelapse.py`, stays as it is: a steady 10 s
+series is the right tool for the shuttle-streaming rhythm, and its
+drift-free scheduling is reused here. The adaptive loop is for the long,
+slow runs where the interesting minutes are rare and unpredictable.
+
 A fixed interval spends light, disk and time evenly on the boring hours
 and the interesting minutes alike. The adaptive loop puts the fast
 frames where the change is:
