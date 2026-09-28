@@ -5,8 +5,9 @@
 #   get_pos()            - a lightweight, on-demand position sync primitive
 #   move()               - move XY, return the ACTUAL resulting position
 #   get_move_history()   - every point move() has visited this session
+#   estop()              - emergency stop: forbid all motion, machine-wide
 #
-# Exactly 4 tools, by explicit direction - do not add more without
+# Exactly 5 tools, by explicit direction - do not add more without
 # checking first. Calibration, historical-frame lookup, etc. should be
 # done by the model reasoning over get_image()'s embedded picture, not
 # by adding a dedicated tool per capability.
@@ -75,7 +76,7 @@
 # _append_frame_history), and get_frame(frame_id) resolves a frame_id
 # back to that record - but get_frame() is a plain Python function, NOT
 # a 5th MCP tool: team direction is to keep the model-facing surface at
-# exactly 4 tools, so history/lookup logic can grow underneath without
+# exactly 5 tools, so history/lookup logic can grow underneath without
 # growing what the model itself can call.
 #
 # WHY move() IS XY-ONLY (not x/y/z): a blind absolute Z move must never
@@ -315,7 +316,7 @@ def get_frame(frame_id: int) -> dict:
     returned for it.
 
     NOT registered as an MCP tool (see server_loop.py) - by explicit team
-    direction the chat-facing surface stays at 4 tools. This is a plain
+    direction the chat-facing surface stays at 5 tools. This is a plain
     importable function for harness/analysis code that needs to resolve
     "frame 42" to its full-res file and the position it was captured at,
     without re-reading FRAME_HISTORY_PATH by hand.

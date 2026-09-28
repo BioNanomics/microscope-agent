@@ -6,7 +6,7 @@ MCP client).
 
 ## Tools
 
-Exactly 4, by design - kept deliberately minimal:
+Exactly 5, by design - kept deliberately minimal:
 
 - **`get_pos(backend)`** - current stage (x, y, z) position, in microns.
   A cheap, on-demand sync primitive, not something to call before every
@@ -36,6 +36,12 @@ identifying that specific capture.
 - **`get_move_history(limit)`** - every point `move()` has actually sent
   the stage to this session, so "where have we already been" doesn't
   need to be re-derived from conversation history.
+
+- **`estop(action)`** - emergency stop. `"engage"` forbids all stage motion
+  for every process on the machine via a flag file; `"status"` reports it.
+  Needs no `confirm`: a stop is always safe. Release is deliberately not
+  reachable from chat - a human clears it with
+  `python -m acquisition.estop release`.
 
 `backend` is `"mock"` (default, safe, simulated) or `"sdk"` (real
 hardware - `move()`/`get_image()` require `confirm=True` for anything

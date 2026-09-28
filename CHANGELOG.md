@@ -39,10 +39,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   asserts the exact tool set, and drives every tool over MCP stdio. Also
   tests of both harnesses' real-hardware approval gate: no `confirm` in any
   model-facing schema, sdk calls stop at the gate and a decline executes
-  nothing, mock calls never prompt.
+  nothing, mock calls never prompt. And tests of `harness/context.py`'s
+  image pruning.
 - `numpy` (2.4.x, the last line that supports Python 3.11) is now a core dependency; new `test` optional group (pytest).
 
 ### Fixed
+- README and code comments said the MCP surface was 4 tools; it has been 5
+  since `estop` was added. The README's tool list now includes `estop`.
 - `get_optical_configuration()` recorded no illumination state. It walked
   `OPTICAL_CONFIG_PROPERTIES`, a hardcoded list that omitted
   `iDIA_LAMP_Switch`/`iDIA_LAMP_Pos` entirely - so a saved configuration never

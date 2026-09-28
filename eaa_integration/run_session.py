@@ -291,7 +291,7 @@ def main() -> None:
     # also fixes a real crash: several of those built-ins use dotted
     # names (e.g. "simple_python_eval_tool.evaluate_python_expression"),
     # which OpenAI's function-calling API rejects outright (names must
-    # match ^[a-zA-Z0-9_-]+$, no dots) - our own 4 tools are named
+    # match ^[a-zA-Z0-9_-]+$, no dots) - our own 5 tools are named
     # cleanly and were never the problem.
     task_manager.tool_manager.disable_bash_coding_tool()
     task_manager.tool_manager.disable_python_coding_tool()

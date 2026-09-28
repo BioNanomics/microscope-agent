@@ -155,7 +155,7 @@ async def _confirm_real_hardware_action(tool_name: str, tool_input: dict) -> boo
 def _mcp_content_to_anthropic_content(mcp_content: list) -> list[dict]:
     """Convert a CallToolResult's content blocks (TextContent/ImageContent/
     ...) to Anthropic tool_result content blocks. Only text and image are
-    handled - loop_tools.py's 4 tools never return audio/resource blocks.
+    handled - loop_tools.py's 5 tools never return audio/resource blocks.
     """
     blocks = []
     for block in mcp_content:

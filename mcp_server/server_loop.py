@@ -1,8 +1,8 @@
 # server_loop.py
 # ------------------------------------------------------------
 # Minimal MCP server entry point: registers ONLY loop_tools.py's
-# functions (get_image, get_pos, move, get_move_history) - kept
-# deliberately minimal, 4 tools total, by explicit team direction.
+# functions (get_image, get_pos, move, get_move_history, estop) - kept
+# deliberately minimal, 5 tools total, by explicit team direction.
 #
 # Run, either way:
 #   confocal-mcp                      (installed console script - see pyproject.toml)
