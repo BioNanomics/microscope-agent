@@ -18,10 +18,10 @@ def test_get_image_mock_returns_metadata_and_preview(write_frame, monkeypatch):
     metadata, preview = loop_tools.get_image(backend="mock", max_dimension=64)
     assert metadata["backend"] == "mock"
     assert Path(metadata["image"]).exists()
-    assert Path(metadata["image"]).is_relative_to(Path(os.environ["CONFOCAL_MCP_DATA_DIR"]))
+    assert Path(metadata["image"]).resolve().is_relative_to(Path(os.environ["CONFOCAL_MCP_DATA_DIR"]).resolve())
     assert set(metadata["position"]) == {"x", "y", "z"}
     assert metadata["frame_id"] >= 1
-    assert preview.format == "jpeg"
+    assert preview.to_image_content().mime_type == "image/jpeg"
     assert loop_tools.get_frame(metadata["frame_id"])["image"] == metadata["image"]
 
 
