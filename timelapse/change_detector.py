@@ -179,8 +179,13 @@ class ChangeDetector:
         stack = np.stack(self._history)
         baseline = np.median(stack, axis=0)
         # Baseline noise: how much the baseline frames disagree with each
-        # other. With a single frame there is no estimate; use a floor.
-        noise = float(np.mean(np.abs(stack - baseline))) if n > 1 else 0.0
+        # other. With a single baseline frame there is no estimate at all,
+        # so the pixel-difference criterion is held back (diff_ready) until
+        # a second frame is in - otherwise ordinary sensor noise on frame 2
+        # reads as a 3x+ event. Area and shift criteria don't need a noise
+        # estimate and stay live from frame 2.
+        diff_ready = n >= 2
+        noise = float(np.mean(np.abs(stack - baseline))) if diff_ready else 1.0
         noise = max(noise, 1.0)
 
         if gray.shape != baseline.shape:
@@ -202,7 +207,7 @@ class ChangeDetector:
             reasons.append(f"xy shift {shift_px:.1f}px (stage/sample moved?)")
         if abs(area_delta) > self.area_threshold:
             reasons.append(f"foreground area {'grew' if area_delta > 0 else 'shrank'} by {abs(area_delta):.1%}")
-        if diff_score > self.diff_threshold:
+        if diff_ready and diff_score > self.diff_threshold:
             reasons.append(f"pixel change {diff_score:.1f}x baseline noise")
 
         self._history.append(gray)

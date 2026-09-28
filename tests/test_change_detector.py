@@ -60,3 +60,12 @@ def test_phase_correlation_recovers_integer_shift(blob_frame):
     b = np.roll(a, shift=(3, -5), axis=(0, 1))
     dx, dy = phase_correlation_shift(a, b)
     assert (dx, dy) == (-5.0, 3.0)
+
+
+def test_second_frame_of_quiet_sequence_is_not_interesting(blob_frame):
+    # Regression: with one baseline frame there is no noise estimate, and
+    # plain sensor noise used to read as a 3x event on frame 2.
+    det = ChangeDetector()
+    det.score_array(blob_frame(seed=0).astype(np.float32))
+    sc = det.score_array(blob_frame(seed=1).astype(np.float32))
+    assert sc.interesting is False, sc

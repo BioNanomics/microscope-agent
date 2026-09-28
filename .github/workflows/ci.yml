@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # Core + test only: the mock stage and mock camera need no hardware
+      # dependencies, so the whole suite runs on a plain runner.
+      - run: pip install -e ".[test]"
+      - run: python -m pytest -q tests
+      # The MCP server must import on a core-only install (the camera and
+      # SDK stacks are lazy imports) - fail the build if that regresses.
+      - run: python -c "import mcp_server.server_loop, timelapse.scheduler"

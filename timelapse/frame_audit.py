@@ -7,7 +7,9 @@
 #   dt_s         - seconds between the two frames, and its ratio to the
 #                  median interval. A ratio well above 1 means the
 #                  acquisition stalled: the "sudden" change in the video
-#                  is really a missing stretch of time.
+#                  is really a missing stretch of time. (For an adaptive
+#                  run from scheduler.py the median is the burst interval,
+#                  so every slow-mode interval reads as a GAP - expected.)
 #   mean_delta   - relative change in global mean intensity. A large
 #                  value with little local change = illumination/exposure
 #                  changed, not the specimen.
@@ -158,7 +160,7 @@ def audit(
 
     diffs = np.array([r[3] for r in raw])
     noise = float(np.nanmedian(diffs)) if np.isfinite(diffs).any() else 1.0
-    noise = max(noise, 1e-6)
+    noise = max(noise, 1.0)  # floor of one gray level - identical frames must not blow this up
 
     t0 = frames[0].t_s
     results: list[PairAudit] = []
