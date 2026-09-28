@@ -36,7 +36,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   real-hardware approval). See `docs/adaptive_timelapse.md`.
 - `tests/` (pytest, mock only) and a GitHub Actions CI workflow. Includes a
   protocol-level test that spawns `mcp_server.server_loop` as a subprocess,
-  asserts the exact tool set, and drives every tool over MCP stdio.
+  asserts the exact tool set, and drives every tool over MCP stdio. Also
+  tests of both harnesses' real-hardware approval gate: no `confirm` in any
+  model-facing schema, sdk calls stop at the gate and a decline executes
+  nothing, mock calls never prompt.
 - `numpy` (2.4.x, the last line that supports Python 3.11) is now a core dependency; new `test` optional group (pytest).
 
 ### Fixed
