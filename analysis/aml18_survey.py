@@ -9,7 +9,8 @@
 #   python -m analysis.aml18_survey D:\...\CelegansAML-18\Test1.nd2
 #   python -m analysis.aml18_survey file.nd2 --neuron-channel GFP
 #
-# Writes <file>_survey/: worms.csv, survey.png (annotated overlay).
+# Writes <file>_survey/ (or --out): worms.csv, survey.png (annotated
+# overlay); for a time-lapse, survey_tNNN.png per time point and counts.csv.
 #
 # WHICH FLUORESCENCE CHANNEL. The neuron channel must be captured at the
 # same instant as TD, or it shows where a crawling worm used to be. On
@@ -144,36 +145,43 @@ def survey_frame(ch: dict[str, np.ndarray], um_px: float, neuron_channel: str,
     near = ndi.distance_transform_edt(~worms) <= 25 / um_px   # neurons may sit just outside the TD edge
 
     rows = []
-    for i in range(1, n + 1):
-        obj = lab == i
+    shape = td.shape
+
+    def add_worm(obj: np.ndarray, width_map: np.ndarray | None, source: str) -> bool:
         skel = skeletonize(obj)
         if skel.sum() < 3:
-            continue
+            return False
         path_px, length_px = longest_path(skel)
         length_um = length_px * um_px
-        width_um = 2 * float(np.median(dist[skel])) * um_px
-        if length_um < min_length_um or length_um < 4 * width_um:
-            continue                                          # egg or debris
+        width_um = 2 * float(np.median(width_map[skel])) * um_px if width_map is not None else None
+        if length_um < min_length_um or (width_um and length_um < 4 * width_um):
+            return False                                      # egg or debris
         ys, xs = np.nonzero(obj)
-        edge = bool(ys.min() == 0 or xs.min() == 0 or ys.max() == td.shape[0] - 1
-                    or xs.max() == td.shape[1] - 1)
+        edge = bool(ys.min() == 0 or xs.min() == 0 or ys.max() == shape[0] - 1
+                    or xs.max() == shape[1] - 1)
         # Neuron signal belonging to this worm: inside the body or within
-        # 25 um of it, and not closer to another worm.
-        zone = ndi.binary_dilation(obj, iterations=int(25 / um_px)) & near
+        # 25 um of it.
+        zone = ndi.binary_dilation(obj, iterations=int(25 / um_px))
+        if source == "TD":
+            zone &= near
         sig = np.where(zone & nmask, neu, 0)
         total = float(sig.sum())
+        if total == 0:
+            # Every AML18 worm has glowing neurons; a dark TD object with
+            # none is agar texture or debris (Loop 16:13 worm 4).
+            return False
         # Head = the end whose first 15% of body length holds more signal.
         seg = max(3, int(0.15 * len(path_px)))
         r = int(60 / um_px)
 
         def end_signal(pts):
-            m = np.zeros_like(obj)
+            m = np.zeros(shape, np.uint8)
             for y, x in pts:
-                cv2.circle(m.view(np.uint8), (int(x), int(y)), r, 1, -1)
+                cv2.circle(m, (int(x), int(y)), r, 1, -1)
             return float(sig[m.astype(bool)].sum())
 
         s_a, s_b = end_signal(path_px[:seg]), end_signal(path_px[-seg:])
-        if total == 0 or max(s_a, s_b) < 1.5 * min(s_a, s_b) + 1:
+        if max(s_a, s_b) < 1.5 * min(s_a, s_b) + 1:
             head = None                                       # no clear winner
         else:
             head = tuple(path_px[0] if s_a > s_b else path_px[-1])
@@ -181,19 +189,44 @@ def survey_frame(ch: dict[str, np.ndarray], um_px: float, neuron_channel: str,
             # not a real end - its neurons may be off-frame, so the
             # comparison is meaningless (Test1 worm 6 was called at the cut).
             hy, hx = head
-            if min(hy, hx) <= 3 or hy >= td.shape[0] - 4 or hx >= td.shape[1] - 4:
+            if min(hy, hx) <= 3 or hy >= shape[0] - 4 or hx >= shape[1] - 4:
                 head = None
         stage = next(name for lim, name in STAGES if length_um / 1000 < lim)
         cy, cx = ndi.center_of_mass(obj)
         rows.append({
-            "worm": len(rows) + 1, "x_px": round(cx), "y_px": round(cy),
-            "length_mm": round(length_um / 1000, 3), "width_um": round(width_um, 1),
+            "worm": len(rows) + 1, "found_by": source, "x_px": round(cx), "y_px": round(cy),
+            "length_mm": round(length_um / 1000, 3),
+            "width_um": round(width_um, 1) if width_um else "",
             "stage_estimate": stage + (" (cut by edge)" if edge else ""),
             "neuron_signal": round(total), "neuron_px": int((sig > 0).sum()),
             "head_x_px": head[1] if head else "", "head_y_px": head[0] if head else "",
-            "head_confidence": round(max(s_a, s_b) / (min(s_a, s_b) + 1), 1) if total else 0,
+            "head_confidence": round(max(s_a, s_b) / (min(s_a, s_b) + 1), 1),
             "_path": path_px, "_obj": obj,
         })
+        return True
+
+    for i in range(1, n + 1):
+        add_worm(lab == i, dist, "TD")
+
+    # Worms seen only by their neurons: small larvae are too faint and
+    # thin in 4x brightfield (Timelapse1: ~6 glowing larvae unoutlined),
+    # but their neuron chain is a clear line of signal. Join each chain
+    # into one object and keep it if it is worm-shaped and not already
+    # part of a brightfield worm. Their length follows the neurons, so it
+    # can read a little short of the body.
+    claimed = np.zeros(shape, bool)
+    for w in rows:
+        claimed |= w["_obj"]
+    claimed = ndi.binary_dilation(claimed, iterations=int(40 / um_px))
+    glow = ndi.binary_dilation(nmask, iterations=max(1, int(8 / um_px)))
+    glow = cv2.morphologyEx(glow.astype(np.uint8), cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))).astype(bool)
+    glab, gn = ndi.label(glow)
+    for i in range(1, gn + 1):
+        obj = glab == i
+        if (obj & claimed).any() or (obj & nmask).sum() < 8:
+            continue
+        add_worm(obj, None, "neurons")
 
     # Annotated overlay: TD grey, neuron channel magenta, worm outlines cyan.
     g = np.clip((td - np.percentile(td, 0.5)) / (np.percentile(td, 99.5) - np.percentile(td, 0.5)), 0, 1)
@@ -203,7 +236,8 @@ def survey_frame(ch: dict[str, np.ndarray], um_px: float, neuron_channel: str,
     img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
     for w in rows:
         cnts, _ = cv2.findContours(w["_obj"].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        cv2.drawContours(img, [c * 2 for c in cnts], -1, (255, 255, 0), 1)
+        colour = (255, 255, 0) if w["found_by"] == "TD" else (0, 165, 255)
+        cv2.drawContours(img, [c * 2 for c in cnts], -1, colour, 2 if w["found_by"] != "TD" else 1)
         if w["head_x_px"] != "":
             cv2.circle(img, (2 * w["head_x_px"], 2 * w["head_y_px"]), 14, (0, 255, 255), 3)
         lbl = f"{w['worm']}: {w['stage_estimate'].split()[0]} {w['length_mm']:.2f}mm"
@@ -214,15 +248,16 @@ def survey_frame(ch: dict[str, np.ndarray], um_px: float, neuron_channel: str,
     h, wd = img.shape[:2]
     cv2.rectangle(img, (wd - 40 - px, h - 50), (wd - 40, h - 38), (255, 255, 255), -1)
     cv2.putText(img, "500 um", (wd - 40 - px, h - 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-    cv2.putText(img, f"{title}: {len(rows)} worms | cyan = outline, yellow ring = head "
+    cv2.putText(img, f"{title}: {len(rows)} worms | cyan = brightfield outline, orange = found by neurons, yellow ring = head "
                      f"({neuron_channel} neurons, magenta)", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
     return rows, img, thr
 
 
-def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: float) -> Path:
+def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: float,
+            out: Path | None = None) -> Path:
     frames, um_px = load(path)
-    out = path.with_name(path.stem + "_survey")
+    out = out or path.with_name(path.stem + "_survey")
     out.mkdir(exist_ok=True)
     multi = len(frames) > 1
     all_rows, counts = [], []
@@ -230,7 +265,11 @@ def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: f
     for ti, (t_s, ch) in enumerate(frames):
         title = f"{path.name}" + (f" t={t_s / 60:.1f} min ({ti + 1}/{len(frames)})" if multi else "")
         rows, img, thr = survey_frame(ch, um_px, neuron_channel, min_length_um, dark_ratio, title)
-        cv2.imwrite(str(out / (f"survey_t{ti:03d}.png" if multi else "survey.png")), img)
+        dest = out / (f"survey_t{ti:03d}.png" if multi else "survey.png")
+        # cv2.imwrite returns False instead of raising - a file held open
+        # elsewhere silently kept the previous run's image on 2026-09-29.
+        if not cv2.imwrite(str(dest), img):
+            raise SystemExit(f"could not write {dest} - is it open in another program?")
         for w in rows:
             w.update(t_index=ti, t_s=round(t_s, 1))
         all_rows += rows
@@ -269,8 +308,9 @@ def main() -> None:
     ap.add_argument("--neuron-channel", default="RFP")
     ap.add_argument("--min-length-um", type=float, default=150.0)
     ap.add_argument("--dark-ratio", type=float, default=0.85)
+    ap.add_argument("--out", type=Path, help="output folder (default: <file>_survey)")
     a = ap.parse_args()
-    analyse(a.nd2, a.neuron_channel, a.min_length_um, a.dark_ratio)
+    analyse(a.nd2, a.neuron_channel, a.min_length_um, a.dark_ratio, a.out)
 
 
 if __name__ == "__main__":
