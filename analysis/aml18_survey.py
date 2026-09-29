@@ -45,15 +45,44 @@ from skimage.morphology import remove_small_objects, skeletonize
 STAGES = [(0.30, "L1"), (0.42, "L2"), (0.56, "L3"), (0.90, "L4"), (99.0, "adult")]
 
 
-def load(path: Path) -> tuple[dict[str, np.ndarray], float]:
+def load(path: Path) -> tuple[list[tuple[float, dict[str, np.ndarray]]], float]:
+    """Every time point as (seconds, {channel: 2-D image}).
+
+    A Z-stack is collapsed per time point: fluorescence by maximum
+    projection (a neuron is counted wherever it is in focus), TD by
+    taking the single sharpest plane (a projection of brightfield smears
+    every plane's blur together). XY multipoint files are not handled.
+    """
     with nd2.ND2File(path) as f:
-        if set(f.sizes) - {"C", "Y", "X"}:
-            raise SystemExit(f"expected one frame (C, Y, X), got {f.sizes} - "
-                             "time-lapse / Z / multi-position files are not handled yet")
+        extra = set(f.sizes) - {"T", "Z", "C", "Y", "X"}
+        if extra:
+            raise SystemExit(f"unsupported dimensions {extra} in {f.sizes}")
         arr = f.asarray().astype(np.float32)
+        dims = list(f.sizes)
         names = [c.channel.name for c in f.metadata.channels]
         um_px = float(f.voxel_size().x)
-    return dict(zip(names, arr)), um_px
+        try:
+            times = [e.get("Time [s]", i) for i, e in enumerate(f.events())][: f.sizes.get("T", 1)]
+        except Exception:
+            times = []
+    # Put the array in a fixed T, Z, C, Y, X order, adding missing axes.
+    for d in ("T", "Z", "C"):
+        if d not in dims:
+            arr = arr[np.newaxis]
+            dims.insert(0, d)
+    arr = np.transpose(arr, [dims.index(d) for d in ("T", "Z", "C", "Y", "X")])
+    frames = []
+    for t in range(arr.shape[0]):
+        ch = {}
+        for i, name in enumerate(names):
+            stack = arr[t, :, i]                                # Z, Y, X
+            if name == "TD":
+                sharp = [float(cv2.Laplacian(z, cv2.CV_32F).var()) for z in stack]
+                ch[name] = np.ascontiguousarray(stack[int(np.argmax(sharp))])
+            else:
+                ch[name] = np.ascontiguousarray(stack.max(axis=0))
+        frames.append((float(times[t]) if t < len(times) else float(t), ch))
+    return frames, um_px
 
 
 def segment_worms(td: np.ndarray, um_px: float, dark_ratio: float) -> np.ndarray:
@@ -101,13 +130,12 @@ def neuron_mask(ch: np.ndarray, um_px: float) -> tuple[np.ndarray, float]:
     return (cv2.GaussianBlur(ch, (0, 0), 1.0) > thr), thr
 
 
-def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: float) -> Path:
-    ch, um_px = load(path)
+def survey_frame(ch: dict[str, np.ndarray], um_px: float, neuron_channel: str,
+                 min_length_um: float, dark_ratio: float, title: str):
+    """One frame: worm rows and the annotated overlay (BGR)."""
     if "TD" not in ch or neuron_channel not in ch:
         raise SystemExit(f"need TD and {neuron_channel}; file has {list(ch)}")
     td, neu = ch["TD"], ch[neuron_channel]
-    out = path.with_name(path.stem + "_survey")
-    out.mkdir(exist_ok=True)
 
     worms = segment_worms(td, um_px, dark_ratio)
     nmask, thr = neuron_mask(neu, um_px)
@@ -186,23 +214,51 @@ def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: f
     h, wd = img.shape[:2]
     cv2.rectangle(img, (wd - 40 - px, h - 50), (wd - 40, h - 38), (255, 255, 255), -1)
     cv2.putText(img, "500 um", (wd - 40 - px, h - 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-    cv2.putText(img, f"{path.name}: {len(rows)} worms | cyan = outline, yellow ring = head "
+    cv2.putText(img, f"{title}: {len(rows)} worms | cyan = outline, yellow ring = head "
                      f"({neuron_channel} neurons, magenta)", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.imwrite(str(out / "survey.png"), img)
+    return rows, img, thr
 
-    keys = [k for k in rows[0] if not k.startswith("_")] if rows else ["worm"]
+
+def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: float) -> Path:
+    frames, um_px = load(path)
+    out = path.with_name(path.stem + "_survey")
+    out.mkdir(exist_ok=True)
+    multi = len(frames) > 1
+    all_rows, counts = [], []
+    print(f"{path.name}: {um_px:.3f} um/px, {len(frames)} time point(s), neuron channel {neuron_channel}")
+    for ti, (t_s, ch) in enumerate(frames):
+        title = f"{path.name}" + (f" t={t_s / 60:.1f} min ({ti + 1}/{len(frames)})" if multi else "")
+        rows, img, thr = survey_frame(ch, um_px, neuron_channel, min_length_um, dark_ratio, title)
+        cv2.imwrite(str(out / (f"survey_t{ti:03d}.png" if multi else "survey.png")), img)
+        for w in rows:
+            w.update(t_index=ti, t_s=round(t_s, 1))
+        all_rows += rows
+        stages = [w["stage_estimate"].split()[0] for w in rows]
+        counts.append({"t_index": ti, "t_s": round(t_s, 1), "worms": len(rows),
+                       **{st: stages.count(st) for _, st in STAGES},
+                       "heads_found": sum(1 for w in rows if w["head_x_px"] != "")})
+        if not multi:
+            print(f"threshold {thr:.0f}; {len(rows)} worms")
+            for w in rows:
+                head = "head found" if w["head_x_px"] != "" else "head unclear"
+                print(f"  #{w['worm']:>2} {w['stage_estimate']:<22} {w['length_mm']:.2f} mm, "
+                      f"{w['width_um']:.0f} um wide, neuron px {w['neuron_px']:>4}, {head} "
+                      f"(ratio {w['head_confidence']})")
+        else:
+            c = counts[-1]
+            print(f"  t={t_s / 60:5.1f} min: {len(rows)} worms "
+                  + " ".join(f"{st}:{c[st]}" for _, st in STAGES) + f"  heads {c['heads_found']}")
+
+    keys = ["t_index", "t_s"] + [k for k in (all_rows[0] if all_rows else {"worm": 0})
+                                 if not k.startswith("_") and k not in ("t_index", "t_s")]
     with (out / "worms.csv").open("w", newline="", encoding="utf-8") as fh:
         wr = csv.DictWriter(fh, fieldnames=keys, extrasaction="ignore")
-        wr.writeheader(); wr.writerows(rows)
-
-    print(f"{path.name}: {um_px:.3f} um/px, neuron channel {neuron_channel} (threshold {thr:.0f})")
-    print(f"{len(rows)} worms")
-    for w in rows:
-        head = "head found" if w["head_x_px"] != "" else "head unclear"
-        print(f"  #{w['worm']:>2} {w['stage_estimate']:<22} {w['length_mm']:.2f} mm, "
-              f"{w['width_um']:.0f} um wide, neuron px {w['neuron_px']:>4}, {head} "
-              f"(ratio {w['head_confidence']})")
+        wr.writeheader(); wr.writerows(all_rows)
+    if multi:
+        with (out / "counts.csv").open("w", newline="", encoding="utf-8") as fh:
+            wr = csv.DictWriter(fh, fieldnames=list(counts[0]))
+            wr.writeheader(); wr.writerows(counts)
     print(f"wrote {out}")
     return out
 
