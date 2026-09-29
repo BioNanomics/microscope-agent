@@ -282,7 +282,8 @@ def analyse(path: Path, neuron_channel: str, min_length_um: float, dark_ratio: f
             for w in rows:
                 head = "head found" if w["head_x_px"] != "" else "head unclear"
                 print(f"  #{w['worm']:>2} {w['stage_estimate']:<22} {w['length_mm']:.2f} mm, "
-                      f"{w['width_um']:.0f} um wide, neuron px {w['neuron_px']:>4}, {head} "
+                      + (f"{w['width_um']:.0f} um wide, " if w["width_um"] != "" else "found by neurons, ")
+                      + f"neuron px {w['neuron_px']:>4}, {head} "
                       f"(ratio {w['head_confidence']})")
         else:
             c = counts[-1]
