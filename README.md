@@ -69,6 +69,21 @@ python -m timelapse.scheduler --backend mock --model-trigger ...   # Claude judg
 python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
 ```
 
+## NIS bridge (`confocal-mcp-nis`) - not yet tested on the scope
+
+A separate MCP server for what only NIS-Elements can do: the AX confocal
+lasers and saved ND experiments. A JOBS Python task inside NIS
+(`acquisition/nis_bridge/bridge_job.py`) serves NIS macro calls on
+`127.0.0.1:8766`. The `confocal-mcp-nis` server talks to it and adds a
+confirm gate, the e-stop and a capture-folder rule. `server_loop` is
+unchanged. Setup, safety rules and the on-scope test plan:
+[docs/nis-bridge.md](docs/nis-bridge.md).
+
+```
+python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs
+confocal-mcp-nis                                         # the MCP server
+```
+
 ## Tests
 
 ```

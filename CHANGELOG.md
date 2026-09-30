@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- NIS bridge (not yet run inside NIS - see `docs/nis-bridge.md`):
+  `acquisition/nis_bridge/bridge_job.py`, a JOBS Python task that serves NIS
+  macro calls (status, relative XY move, 4x/10x objective change, ND2
+  capture, saved ND experiment run/finish) on 127.0.0.1:8766;
+  `acquisition/backends/nis_bridge.py`, its client and command line; and
+  `mcp_server/server_nis.py` (`confocal-mcp-nis`), a separate MCP server
+  with confirm-gated tools. The e-stop is enforced in both client and
+  bridge; `server_loop` is unchanged.
+- `acquisition/calibration/nis_port_probe.py` - minimal JOBS task showing
+  that a port bound inside `nis_ar.exe` is reachable from outside.
 - `analysis/make_soundtrack.py` - original ambient soundtrack synthesised
   with numpy (no samples, so no licensing questions), stretched to any
   length. `--movie run.mp4` sizes it to the movie and muxes it on as AAC
