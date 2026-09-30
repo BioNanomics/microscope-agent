@@ -1,8 +1,8 @@
 # server_loop.py
 # ------------------------------------------------------------
 # Minimal MCP server entry point: registers ONLY loop_tools.py's
-# functions (get_image, get_pos, move, get_move_history) - kept
-# deliberately minimal, 4 tools total, by explicit team direction.
+# functions (get_image, get_pos, move, get_move_history, estop) - kept
+# deliberately minimal, 5 tools total, by explicit team direction.
 #
 # Run, either way:
 #   confocal-mcp                      (installed console script - see pyproject.toml)
@@ -14,6 +14,8 @@
 
 from mcp.server.mcpserver import MCPServer
 
+from acquisition import estop
+
 from mcp_server import loop_tools as tools
 
 mcp = MCPServer("ConfocalOrchestrator-Loop")
@@ -22,10 +24,13 @@ mcp.add_tool(tools.get_image)
 mcp.add_tool(tools.get_pos)
 mcp.add_tool(tools.move)
 mcp.add_tool(tools.get_move_history)
+mcp.add_tool(tools.estop)
 
 
 def main() -> None:
-    """Console entry point (``confocal-mcp``): serve the 4 tools over stdio."""
+    """Console entry point (``confocal-mcp``): serve the 5 tools over stdio."""
+    # The STOP panel, on screen for as long as this server runs.
+    estop.launch_panel()
     mcp.run(transport="stdio")
 
 

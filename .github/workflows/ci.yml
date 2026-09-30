@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:            # every branch, so a push runs even before a pull request exists
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # No hardware groups: the mock stage and mock camera need none, so the
+      # whole suite runs on a plain runner. 'harness' is pure Python and is
+      # needed to import the Claude loops for the approval-gate tests (no
+      # API key required - no model is ever called).
+      - run: pip install -e ".[harness,test]"
+      - run: python -m pytest -v tests   # -v names each test in the log
+      # The MCP server must import on a core-only install (the camera and
+      # SDK stacks are lazy imports) - fail the build if that regresses.
+      # (tests/test_mcp_server.py goes further and actually runs it.)
+      - run: python -c "import mcp_server.server_loop, timelapse.scheduler"

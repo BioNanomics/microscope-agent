@@ -6,6 +6,78 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ## [Unreleased]
 
+### Added
+- `analysis/make_soundtrack.py` - original ambient soundtrack synthesised
+  with numpy (no samples, so no licensing questions), stretched to any
+  length. `--movie run.mp4` sizes it to the movie and muxes it on as AAC
+  with the video stream copied, writing `run_music.mp4`. At 39 s it
+  reproduces the Physarum Short's track exactly.
+- `acquisition/calibration/ti2_inventory.py` - read-only inventory of every
+  device the Ti2 reports, with each one's valid range, unit, and `Control`
+  value. Field names come from the COM type library at runtime and rows are
+  grouped by the microscope's own `Control` value, so there is no device list
+  to keep in sync. `Control` is the practical guide to what can be driven:
+  `-1` devices (the D-LEDI channels, the DIA/EPI/AUX shutters, Intensilight,
+  TIRF, LAPP) reliably ignore writes; `>= 0` usually accepts, with measured
+  exceptions (`iDIC_PRISM`, `iTURRET2SHUTTER`). Note `Enabled` is *not* a
+  fitted-hardware flag - it reads True for all 88 devices.
+- `acquisition/calibration/ti2_config.py` - `save` / `show` / `diff` / `apply`
+  for the full device configuration from the command line. `apply` requires
+  `--confirm`, skips stage/objective/TIRF unless `--include-motion`, and polls
+  the read-back rather than reading once (several devices report the old value
+  for up to a second after a successful write).
+- `get_image(backend=...)`: `backend="mock"` returns a simulated frame via
+  `MockNIS.capture()` with no camera attached and no `confirm`, so capture
+  logic can be developed off the microscope PC. `backend="sdk"` (the
+  default) is unchanged and still requires `confirm=True`. The metadata dict
+  now carries `backend`. Both harnesses skip the hardware gate for mock
+  captures.
+- `CONFOCAL_MOCK_FRAME_PATH`: PNG the mock capture serves (defaults to the
+  old `data/analysis/nd2_sample/frame_0.png` location).
+- `timelapse/` package (not MCP tools): `change_detector` (model-free
+  per-frame change score), `frame_audit` (CLI: gaps / intensity jumps /
+  stage shifts vs. specimen change in an existing sequence), `scheduler`
+  (adaptive slow/burst acquisition loop with hard caps and a one-time
+  real-hardware approval), `model_trigger` (Claude behind the scheduler's
+  trigger hook: extend or end a burst from the before/after frames, with
+  call caps and fail-safe "no opinion"; runs on a background thread so
+  burst timing never waits on the model). See `docs/adaptive_timelapse.md`.
+- `tests/` (pytest, mock only) and a GitHub Actions CI workflow. Includes a
+  protocol-level test that spawns `mcp_server.server_loop` as a subprocess,
+  asserts the exact tool set, and drives every tool over MCP stdio. Also
+  tests of both harnesses' real-hardware approval gate: no `confirm` in any
+  model-facing schema, sdk calls stop at the gate and a decline executes
+  nothing, mock calls never prompt. And tests of `harness/context.py`'s
+  image pruning.
+- `numpy` (2.4.x, the last line that supports Python 3.11) is now a core dependency; new `test` optional group (pytest).
+
+### Fixed
+- README and code comments said the MCP surface was 4 tools; it has been 5
+  since `estop` was added. The README's tool list now includes `estop`.
+- `get_optical_configuration()` recorded no illumination state. It walked
+  `OPTICAL_CONFIG_PROPERTIES`, a hardcoded list that omitted
+  `iDIA_LAMP_Switch`/`iDIA_LAMP_Pos` entirely - so a saved configuration never
+  captured whether the transmitted lamp was on, the one setting that decides
+  whether a camera on the camera port sees anything. The `iDLED*` names it did
+  list are ignored by this microscope, whose D-LEDI is not driven through the
+  Ti2 body. Both it and `apply_optical_configuration()` now use the SDK's own
+  `DataGet`, which returns all ~90 properties in one call, and the hardcoded
+  list is gone. `apply_optical_configuration()` gains `include_motion=False`:
+  the snapshot is now the full device set, so without that guard restoring a
+  lamp setting would also drive the stage.
+
+- Runtime data no longer falls back to an unwritable working directory. MCP
+  clients choose the working directory their servers are launched with, and
+  Claude Desktop on Windows uses `C:\WINDOWS\system32` - so with
+  `CONFOCAL_MCP_DATA_DIR` unset, the first `get_image()` failed with an
+  "access is denied" `OSError` that read as a camera fault, and under an
+  elevated process would instead have written captures into a system
+  directory. `acquisition/paths.py` now rejects a working directory that is
+  inside the Windows directory or that it cannot create a file in, falling
+  back to `~/.confocal-mcp` with a warning on stderr. Setting
+  `CONFOCAL_MCP_DATA_DIR` is still honoured as-is, and a normal source
+  checkout still resolves to the checkout directory.
+
 ## [0.1.0] - 2026-08-31
 
 First packaged release.

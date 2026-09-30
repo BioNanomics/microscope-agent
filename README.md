@@ -6,7 +6,7 @@ MCP client).
 
 ## Tools
 
-Exactly 4, by design - kept deliberately minimal:
+Exactly 5, by design - kept deliberately minimal:
 
 - **`get_pos(backend)`** - current stage (x, y, z) position, in microns.
   A cheap, on-demand sync primitive, not something to call before every
@@ -14,9 +14,11 @@ Exactly 4, by design - kept deliberately minimal:
 - **`move(x, y, backend, confirm)`** - move the XY stage to an absolute
   position, returns the *actual* resulting position. XY-only, on purpose
   (no absolute Z move is reachable from chat - crash risk into the sample).
-- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension)`** -
-  capture a real frame from the Baumer camera, paired with the exact
-  stage position it was taken at. Returns both the metadata and an
+- **`get_image(confirm, exposure_time_us, gain, crop, max_dimension, backend)`** -
+  capture a frame from the Baumer camera (`backend="sdk"`, the default)
+  or a simulated one from the mock (`backend="mock"`, no hardware, no
+  `confirm` needed - set `CONFOCAL_MOCK_FRAME_PATH` to choose the PNG it
+  serves), paired with the exact stage position it was taken at. Returns both the metadata and an
   embedded image preview, so the model can actually see the picture, not
   just a file path. `crop` (optional `{"x","y","width","height"}`
   fractions of the full frame) restricts the embedded preview to a
@@ -35,6 +37,12 @@ identifying that specific capture.
   the stage to this session, so "where have we already been" doesn't
   need to be re-derived from conversation history.
 
+- **`estop(action)`** - emergency stop. `"engage"` forbids all stage motion
+  for every process on the machine via a flag file; `"status"` reports it.
+  Needs no `confirm`: a stop is always safe. Release is deliberately not
+  reachable from chat - a human clears it with
+  `python -m acquisition.estop release`.
+
 `backend` is `"mock"` (default, safe, simulated) or `"sdk"` (real
 hardware - `move()`/`get_image()` require `confirm=True` for anything
 that touches real hardware). See `mcp_server/loop_tools.py`'s header
@@ -44,6 +52,31 @@ comment for the full design rationale (why no `get_time()`, why no
 No NIS-Elements involved anywhere - the camera is reached directly via
 GenICam/GenTL, and the stage via the Ti2 ActiveX SDK, both independent
 of whether NIS-Elements software is even running.
+
+## Adaptive time-lapse (`timelapse/`)
+
+Not an MCP tool - a loop that sits beside the tools and calls `get_image()`
+itself. It captures on a slow interval, scores each frame for change with
+plain numpy (no model call), and switches to a fast burst when something
+happens. `timelapse/frame_audit.py` applies the same scores to an existing
+frame sequence to tell an acquisition gap, an illumination change or a
+stage bump from real specimen change. Design, safety model and status:
+[docs/adaptive_timelapse.md](docs/adaptive_timelapse.md).
+
+```
+python -m timelapse.scheduler --backend mock --slow 2 --burst 0.5 --burst-duration 5 --max-runtime 30
+python -m timelapse.scheduler --backend mock --model-trigger ...   # Claude judges each trigger (needs API credentials)
+python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
+```
+
+## Tests
+
+```
+pip install -e ".[test]"
+python -m pytest -q tests
+```
+
+Mock backend only - nothing touches hardware. CI runs the same on every push.
 
 ## Install
 
@@ -99,9 +132,22 @@ project-level `.mcp.json` for Claude Code:
 { "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
 ```
 
-Data (captures, move/frame history logs) is written under the current working
-directory when the server runs from an installed package - launch it from a
-stable location.
+Data (captures, move/frame history logs, saved positions) is written under the
+current working directory - so launch the server from a stable location, or set
+`CONFOCAL_MCP_DATA_DIR` to pin it explicitly:
+
+```json
+{ "mcpServers": { "confocal": {
+    "command": "confocal-mcp",
+    "env": { "CONFOCAL_MCP_DATA_DIR": "D:\\path\\to\\your\\data" }
+} } }
+```
+
+Setting it is worth doing for any MCP client, because the client picks the
+working directory and the caller has no say in it - Claude Desktop on Windows
+launches servers in `C:\WINDOWS\system32`. When the working directory is
+unusable like that, the server falls back to `~/.confocal-mcp` and says so on
+stderr rather than failing at the first capture.
 
 ## Harness loop (`harness/agent.py`)
 
@@ -113,10 +159,10 @@ unaffected either way - use whichever fits: MCP for Claude Desktop/Code,
 this loop for a standalone script.
 
 Requires `ANTHROPIC_API_KEY` set - either in a `.env` file at the repo
-root (copy the commented-out line in `.env`, fill in your real key; this
-file is gitignored and loaded automatically by `harness/agent.py`), as a
+root (`cp .env.example .env`, fill in your real key; `.env` is gitignored
+and loaded automatically by the harnesses and the model trigger), as a
 regular environment variable, or via `ant auth login`. Real hardware
-(`backend="sdk"`, or any `get_image` call) always pauses for a live
+(`backend="sdk"` on `move` or `get_image`) always pauses for a live
 "y/N" approval at the terminal before executing, regardless of what the
 model requests - see `harness/agent.py`'s header comment for why. Old
 captured images are pruned from the model's context after a couple of

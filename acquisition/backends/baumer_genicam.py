@@ -119,13 +119,25 @@ class BaumerGenICam:
         node_map = self._acquirer.remote_device.node_map
         exposure = node_map.ExposureTime
         gain = node_map.Gain
-        return {
+        settings = {
             "exposure_time_us": exposure.value,
             "exposure_time_range_us": [exposure.min, exposure.max],
             "gain": gain.value,
             "gain_range": [gain.min, gain.max],
             "pixel_format": node_map.PixelFormat.value,
         }
+        # REPORTED BECAUSE IT IS OTHERWISE INVISIBLE STATE. White balance
+        # persists on the camera across processes, is settable from any
+        # GenICam consumer, and silently rewrites every captured colour -
+        # a whole time-lapse was acquired on 2026-09-21 without anyone
+        # being able to tell from the saved metadata what the colour
+        # pipeline had done to it. BalanceRatio is not exposed on the
+        # VCXU-23C, so mode is all there is to record.
+        try:
+            settings["balance_white_auto"] = node_map.BalanceWhiteAuto.value
+        except Exception:
+            settings["balance_white_auto"] = None
+        return settings
 
     def set_settings(self, exposure_time_us: float | None = None, gain: float | None = None) -> dict:
         """Set exposure time (microseconds) and/or gain via the GenICam
@@ -217,10 +229,25 @@ class BaumerGenICam:
             elif pixel_format == "Mono8":
                 rgb = cv2.cvtColor(data.reshape(h, w), cv2.COLOR_GRAY2RGB)
             elif pixel_format.startswith("Bayer"):
-                # Literal-name match to cv2's code; unverified against a
-                # known-colour target. If colours look swapped under real
-                # light, try COLOR_BayerGR/BG/GB2RGB instead.
-                rgb = cv2.cvtColor(data.reshape(h, w), cv2.COLOR_BayerRG2RGB)
+                # VERIFIED 2026-09-21 against the camera's OWN internal
+                # debayer, which is the ground truth available without a
+                # colour target: capturing the same scene in BGR8 and in
+                # RGB8 agreed exactly (organism hue 54 deg, saturation
+                # ~105), while decoding the BayerRG8 stream with
+                # COLOR_BayerRG2RGB - what this line used to do - gave hue
+                # 188 deg, very nearly the complement. That is R/B
+                # inversion, so the correct cv2 code for this body's
+                # "BayerRG8" is BayerBG2RGB, not BayerRG2RGB.
+                #
+                # PREFER BGR8 OVER ANY BAYER FORMAT ON THIS CAMERA. The
+                # Bayer stream also carries markedly less colour than the
+                # camera's own debayer of the same scene (channel spread
+                # 4.99 vs 11.93, saturation 56 vs 105), so it loses real
+                # information rather than just mislabelling it. The
+                # PixelFormat is whatever the camera was last left in by
+                # any GenICam consumer - if someone sets it back to Bayer,
+                # this branch at least renders the right hue.
+                rgb = cv2.cvtColor(data.reshape(h, w), cv2.COLOR_BayerBG2RGB)
             else:
                 raise RuntimeError(
                     f"Unsupported camera PixelFormat {pixel_format!r} - "

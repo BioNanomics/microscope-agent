@@ -15,6 +15,7 @@
 #   nis = MockNIS()
 # ------------------------------------------------------------
 
+import os
 import shutil
 import sys
 import time
@@ -48,8 +49,15 @@ Z_MOVE_DELAY_SEC = 0.05
 
 # Sample frame copied by capture() to simulate a real image capture. Falls
 # back to a generated placeholder if this isn't present (it usually isn't -
-# it's a dev-only asset under the gitignored data/ tree).
-SAMPLE_FRAME_PATH = _data_root() / "data" / "analysis" / "nd2_sample" / "frame_0.png"
+# it's a dev-only asset under the gitignored data/ tree). Set
+# CONFOCAL_MOCK_FRAME_PATH to point at any PNG instead - e.g. a real
+# time-lapse frame - so mock captures return something worth analyzing.
+# Read at call time (not cached) so a test or a dev script can swap the
+# file, or reassign this module attribute, between captures.
+SAMPLE_FRAME_PATH = Path(
+    os.environ.get("CONFOCAL_MOCK_FRAME_PATH")
+    or _data_root() / "data" / "analysis" / "nd2_sample" / "frame_0.png"
+)
 CAPTURE_DIR = _captures_dir()
 
 

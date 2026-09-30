@@ -165,7 +165,7 @@ MCP tool results (`CallToolResult.content`) are typed content blocks -
 |---|---|
 | `TextContent(text=...)` | `{"type": "text", "text": ...}` |
 | `ImageContent(data=..., mime_type=...)` | `{"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": data}}` |
-| anything else (audio, resource links, ...) | a text block noting the unsupported type - `loop_tools.py`'s 4 tools never actually produce these, so this is a defensive fallback, not a real code path |
+| anything else (audio, resource links, ...) | a text block noting the unsupported type - `loop_tools.py`'s 5 tools never actually produce these, so this is a defensive fallback, not a real code path |
 
 Conveniently, MCP's `Tool.input_schema` is already plain JSON Schema in
 the same shape Anthropic's tool `input_schema` expects, so
@@ -209,7 +209,7 @@ approval, same as `agent.py`.
 Both with the mock backend (no real hardware needed) and real Claude
 API calls:
 
-- `list_tools()` correctly discovers all 4 tools, with `confirm` absent
+- `list_tools()` correctly discovers all 5 tools, with `confirm` absent
   from every schema Claude sees.
 - `call_tool()` round-trips correctly for `get_pos`, `move`, and
   `get_move_history` - including error cases (unknown tool name, a

@@ -9,3 +9,7 @@ eaa_integration/memory/
 eaa_integration/*.sqlite
 eaa_integration/*.sqlite-shm
 eaa_integration/*.sqlite-wal
+
+# Nikon Ti2 SDK documentation, originals and samples extracted from the
+# Nikon installers. Licensed with SDK access - kept local, not published.
+docs/nikon-sdk/

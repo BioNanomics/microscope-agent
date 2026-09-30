@@ -5,8 +5,9 @@
 #   get_pos()            - a lightweight, on-demand position sync primitive
 #   move()               - move XY, return the ACTUAL resulting position
 #   get_move_history()   - every point move() has visited this session
+#   estop()              - emergency stop: forbid all motion, machine-wide
 #
-# Exactly 4 tools, by explicit direction - do not add more without
+# Exactly 5 tools, by explicit direction - do not add more without
 # checking first. Calibration, historical-frame lookup, etc. should be
 # done by the model reasoning over get_image()'s embedded picture, not
 # by adding a dedicated tool per capability.
@@ -75,7 +76,7 @@
 # _append_frame_history), and get_frame(frame_id) resolves a frame_id
 # back to that record - but get_frame() is a plain Python function, NOT
 # a 5th MCP tool: team direction is to keep the model-facing surface at
-# exactly 4 tools, so history/lookup logic can grow underneath without
+# exactly 5 tools, so history/lookup logic can grow underneath without
 # growing what the model itself can call.
 #
 # WHY move() IS XY-ONLY (not x/y/z): a blind absolute Z move must never
@@ -84,8 +85,11 @@
 #
 # WHY get_image() REQUIRES confirm=True: unlike get_pos()/move(), it
 # fires a real camera - same safety-gate pattern used for anything that
-# touches real hardware, even when (as here) there's no backend="mock"
-# equivalent to fall back to.
+# touches real hardware. backend="sdk" (the default - a capture is real
+# hardware unless the caller says otherwise) requires confirm=True;
+# backend="mock" routes to nis_mock.MockNIS.capture() (copies a sample
+# frame to data/captures/) so the capture-analyze-decide loop can be
+# developed and tested off the microscope PC with no camera attached.
 #
 # WHY get_image() RETURNS [metadata, image] INSTEAD OF JUST A PATH: MCP
 # tool results can embed real image content (base64 + mime type), not
@@ -312,7 +316,7 @@ def get_frame(frame_id: int) -> dict:
     returned for it.
 
     NOT registered as an MCP tool (see server_loop.py) - by explicit team
-    direction the chat-facing surface stays at 4 tools. This is a plain
+    direction the chat-facing surface stays at 5 tools. This is a plain
     importable function for harness/analysis code that needs to resolve
     "frame 42" to its full-res file and the position it was captured at,
     without re-reading FRAME_HISTORY_PATH by hand.
@@ -449,6 +453,7 @@ def get_image(
     gain: float | None = None,
     crop: dict | None = None,
     max_dimension: int | None = None,
+    backend: str = "sdk",
 ) -> list:
     """Grab one frame from the Baumer GenICam camera (see
     acquisition.backends.baumer_genicam.BaumerGenICam) and return it
@@ -473,11 +478,16 @@ def get_image(
 
     No NIS-Elements involved - connects directly to the camera via its
     GenTL producer (see BaumerGenICam/find_cti_files), independent of any
-    NIS-Elements process. Real hardware only (no mock equivalent - there's
-    nothing to simulate a camera trigger against) - requires confirm=True,
-    same safety-gate pattern as every other real-hardware-touching tool in
-    this repo. Position is read via backend="sdk" (Ti2 ActiveX SDK), the
-    same NIS-Elements-independent hardware path move()/get_pos() use.
+    NIS-Elements process. backend="sdk" (default) is real hardware and
+    requires confirm=True, same safety-gate pattern as every other
+    real-hardware-touching tool in this repo; position is then read via
+    the Ti2 ActiveX SDK, the same NIS-Elements-independent path
+    move()/get_pos() use. backend="mock" needs no confirm: it copies a
+    sample frame via nis_mock.MockNIS.capture() (override the source
+    file with CONFOCAL_MOCK_FRAME_PATH) and reads the mock stage's
+    position, so everything downstream of a capture - preview, crop,
+    frame_id, frame history - can be exercised with no camera attached.
+    exposure_time_us/gain are accepted and ignored on the mock.
 
     exposure_time_us, gain: optional - if given, applied via
     BaumerGenICam.set_settings() before capturing (raises ValueError if
@@ -509,19 +519,18 @@ def get_image(
     already-small region can afford more pixels). Omit to use the
     default.
     """
-    if not confirm:
-        raise PermissionError(
-            "get_image fires a real camera and requires confirm=True. "
-            "Refusing to proceed without explicit confirmation."
-        )
+    _require_confirm_for_sdk(backend, confirm)
     if crop is not None:
         _validate_crop(crop)
 
-    camera = _get_camera()
-    if exposure_time_us is not None or gain is not None:
-        camera.set_settings(exposure_time_us=exposure_time_us, gain=gain)
-    image_path = camera.capture()
-    pos = get_pos(backend="sdk")
+    if backend == "mock":
+        image_path = _get_backend("mock").capture()
+    else:
+        camera = _get_camera()
+        if exposure_time_us is not None or gain is not None:
+            camera.set_settings(exposure_time_us=exposure_time_us, gain=gain)
+        image_path = camera.capture()
+    pos = get_pos(backend=backend)
 
     metadata = {
         "image": str(image_path),
@@ -531,6 +540,7 @@ def get_image(
         "captured_at": pos["measured_at"],
         "monotonic_ms": pos["monotonic_ms"],
         "crop": crop,
+        "backend": backend,
     }
     _append_frame_history(metadata)
     preview = _make_preview_image(
@@ -562,3 +572,53 @@ def get_move_history(limit: int = 50) -> dict:
 
     records = [json.loads(line) for line in lines[-limit:]]
     return {"history": records, "returned": len(records), "total_moves": len(lines)}
+
+
+def estop(action: str = "status", reason: str = "requested via MCP") -> dict:
+    """EMERGENCY STOP: immediately forbid all microscope motion.
+
+    Call this the moment anything looks wrong - an unexpected move, a
+    position that doesn't match what you asked for, a stage that seems to
+    be travelling when it shouldn't be, or an instruction from the
+    operator to stop. It is cheap, it is instant, and a needless stop
+    costs nothing but a release. Do not deliberate: stop first, diagnose
+    afterwards.
+
+    Once engaged, EVERY motion primitive refuses - not just this session's,
+    but every process on the machine that drives this microscope,
+    including runs started by something else entirely. The flag lives in a
+    file, so it outlives whatever set it and cannot be lost by a process
+    dying. It cannot stop a move already in flight (the Ti2 has no abort):
+    that move runs to its end, and every move after it is refused. Long XY
+    moves are split into hops, so the stage stops within one hop.
+
+    action: "engage" to stop everything, or "status" to report the current
+    state. RELEASE IS DELIBERATELY NOT AVAILABLE HERE - a stop that the
+    agent can lift by itself is not a safety device. A human clears it
+    from a terminal with `python -m acquisition.estop release`.
+
+    Returns the resulting state. This tool never needs confirm=True: a
+    stop is always safe to perform, and requiring a confirmation step for
+    an emergency control would defeat its purpose.
+    """
+    from acquisition import estop as _estop
+
+    if action == "engage":
+        info = _estop.engage(reason)
+        return {
+            "engaged": True,
+            "detail": info,
+            "release_with": "python -m acquisition.estop release",
+            "note": "All motion is now refused for every process on this machine.",
+        }
+    if action == "status":
+        return {
+            "engaged": _estop.is_engaged(),
+            "detail": _estop.details(),
+            "flag_file": str(_estop.ESTOP_PATH),
+        }
+    raise ValueError(
+        f"Unknown estop action {action!r}. Use 'engage' to stop motion, or "
+        "'status' to check. Releasing is a human action performed at a "
+        "terminal: python -m acquisition.estop release"
+    )

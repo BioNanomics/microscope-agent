@@ -92,7 +92,7 @@ Safety rules:
 - Always use backend="mock" (the default) unless the user has clearly \
 asked you to control the real, physical microscope. Only pass \
 backend="sdk" when real hardware action is actually intended.
-- Every real-hardware action (get_image always; move when \
+- Every real-hardware action (get_image and move when \
 backend="sdk") pauses for a live human approval at the terminal before \
 it executes - expect that pause, and explain to the user what you're \
 about to do and why before calling it, so the approval makes sense to \
@@ -155,7 +155,7 @@ async def _confirm_real_hardware_action(tool_name: str, tool_input: dict) -> boo
 def _mcp_content_to_anthropic_content(mcp_content: list) -> list[dict]:
     """Convert a CallToolResult's content blocks (TextContent/ImageContent/
     ...) to Anthropic tool_result content blocks. Only text and image are
-    handled - loop_tools.py's 4 tools never return audio/resource blocks.
+    handled - loop_tools.py's 5 tools never return audio/resource blocks.
     """
     blocks = []
     for block in mcp_content:
@@ -178,7 +178,7 @@ async def _execute_tool(mcp_client: Client, name: str, tool_input: dict) -> tupl
     """
     tool_input = dict(tool_input)
     try:
-        if name == "get_image":
+        if name == "get_image" and tool_input.get("backend", "sdk") == "sdk":
             if not await _confirm_real_hardware_action(name, tool_input):
                 return _text_content("User declined this real-hardware capture. Not executed."), True
             tool_input["confirm"] = True
