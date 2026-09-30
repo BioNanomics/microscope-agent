@@ -45,9 +45,18 @@ harness = [
     "anthropic==1.0.0",
     "python-dotenv==1.2.3",
 ]
+# The offline scripts in analysis/ (ND2 reading, worm/Physarum analysis,
+# movie soundtracks). Run from a source checkout - analysis/ is not in the wheel.
+analysis = [
+    "scipy==1.18.1",
+    "scikit-image==0.26.0",
+    "nd2==0.12.0",
+    "imageio-ffmpeg==0.6.0",
+    "opencv-python==5.0.0.93",
+]
 # Everything, for a full workstation install.
 all = [
-    "confocal-mcp[camera,sdk,harness,test]",
+    "confocal-mcp[camera,sdk,harness,analysis,test]",
 ]
 
 [project.scripts]

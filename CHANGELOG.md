@@ -87,6 +87,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   back to `~/.confocal-mcp` with a warning on stderr. Setting
   `CONFOCAL_MCP_DATA_DIR` is still honoured as-is, and a normal source
   checkout still resolves to the checkout directory.
+- The `analysis/` scripts imported `scipy`, `scikit-image`, `nd2`,
+  `imageio-ffmpeg` and `opencv-python`, none of which the package declared, so
+  a fresh install could not run them. They are now the `analysis` optional
+  group, which `all` (and so `requirements.txt`) includes.
 
 ## [0.1.0] - 2026-08-31
 

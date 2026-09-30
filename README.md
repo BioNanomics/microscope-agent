@@ -100,10 +100,11 @@ point. Dependencies are split into groups so a machine only pulls what it needs:
 
 | Group | Pulls in | For |
 |---|---|---|
-| *(core)* | `mcp`, `Pillow`, `PyYAML` | the MCP server against the **mock** stage |
+| *(core)* | `mcp`, `Pillow`, `PyYAML`, `numpy` | the MCP server against the **mock** stage |
 | `camera` | `harvesters`, `genicam`, `opencv-python` | real Baumer camera capture |
 | `sdk` | `pywin32` | real Ti2 stage control (Windows) |
 | `harness` | `anthropic`, `python-dotenv` | the standalone Claude loops in `harness/` |
+| `analysis` | `scipy`, `scikit-image`, `nd2`, `imageio-ffmpeg`, `opencv-python` | the offline scripts in `analysis/` (source checkout only) |
 | `all` | everything above | a full workstation |
 
 The real hardware backends are imported lazily, so a core-only install runs
