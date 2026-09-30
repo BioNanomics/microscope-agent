@@ -75,7 +75,7 @@ ESTOP_PATH = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
 
 #: Held by the running STOP panel for its whole life, so every process can
 #: tell whether one is already on screen. Windows frees it if the panel dies.
-PANEL_MUTEX = "Local\confocal-mcp-estop-panel"
+PANEL_MUTEX = r"Local\confocal-mcp-estop-panel"
 
 
 class EStopEngaged(RuntimeError):
