@@ -3,31 +3,31 @@
 # Ti2 ActiveX SDK backend for stage control - real hardware via
 # win32com.client.Dispatch(NkTi2Ax.NikonTi2AxAutoConnectMicroscope.CLSID),
 # the same connection pattern confirmed working in
-# acquisition/calibration/nikon_connection_test.py against the Ti2-E Device Simulator.
+# ConfocalOrchestrator's acquisition/calibration/nikon_connection_test.py against the Ti2-E Device Simulator.
 #
 # ConfocalOrchestrator has two stage-control backends, both exposing the
 # same shape of interface so orchestration/stage_positions.py can swap
 # between them via its `backend` parameter - see nis_mock.py for the
 # other one ("mock").
 # This is the "sdk" backend: direct ActiveX bindings, now that Nikon has
-# approved SDK access (see docs/microscope-notes.md's "SDK Status") -
+# approved SDK access (see ConfocalOrchestrator's docs/microscope-notes.md, "SDK Status") -
 # confirmed end-to-end against the Ti2-E Device Simulator, 2026-07-27.
 #
 # CONFIRMED PROPERTIES (from .venv/Lib/site-packages/NkTi2Ax.py, the
 # generated bindings for the SDK's own type library - the same file that
-# defines iTURRET1POS/Turret1Pos, confirmed working in calibration/nikon_connection_test.py):
+# defines iTURRET1POS/Turret1Pos, confirmed working in ConfocalOrchestrator's calibration/nikon_connection_test.py):
 #   iXPOSITION / iYPOSITION / iZPOSITION - direct properties, readable and
 #   writable, same shape as iTURRET1POS.
 #   XPosition / YPosition / ZPosition - child settings objects (.Value/
 #   .Lower/.Higher), same shape as Turret1Pos. Read-verified against the
-#   Ti2-E Device Simulator via acquisition/calibration/nikon_stage_test.py -
+#   Ti2-E Device Simulator via ConfocalOrchestrator's acquisition/calibration/nikon_stage_test.py -
 #   both forms returned identical values.
 #
 # UNITS (inferred, not stated anywhere explicit - the bindings just
 # declare a plain integer VARIANT, no unit metadata): cross-referencing
 
 # the simulator's reported Lower/Higher travel limits against
-# docs/microscope-notes.md's documented hardware spec ("Stroke X:
+# the Nikon Ti2-E hardware spec ("Stroke X:
 # +/-57mm, Y: +/-36.5mm ... Focusing: min increment 0.01um, 10mm stroke"):
 #   X: Lower/Higher = +/-570000  -> 0.1um/count exactly reproduces +/-57mm
 #   Z: Lower/Higher = 0..1000000 -> 0.01um/count exactly reproduces the
@@ -41,7 +41,7 @@
 # So: X/Y properties are in units of 0.1um ("decimicrons"), Z is in units
 # of 0.01um ("centimicrons"). XY_GetPosition/XY_Move/Z_GetPosition/Z_Move
 # below convert to/from plain microns at their boundary so callers
-# (StagePositionManager, run_protocol.py) never see raw counts.
+# (StagePositionManager, mcp_server/loop_tools.py) never see raw counts.
 # ------------------------------------------------------------
 
 import queue
@@ -92,7 +92,7 @@ PFS_MAX_OFFSET_STEP_FRACTION = 0.02
 def to_plain_float(value) -> float:
     """Convert a numpy scalar (or anything float-like) to a plain Python float.
 
-    Matches the same convention used in calibration/nis_jobs_connection_test.py/orchestration/stage_positions.py -
+    Matches the same convention used in orchestration/stage_positions.py (and ConfocalOrchestrator's nis_jobs_connection_test.py) -
     values passed to a COM property setter must be plain Python numbers,
     not numpy types.
     """
@@ -170,7 +170,7 @@ class NISSdk:
 
     Every instance shares the same underlying COM connection (see
     _ComThread above) - constructing NISSdk() repeatedly (once per MCP
-    tool call, as acquisition_tools.py does) is cheap and does not open a
+    tool call, as mcp_server/loop_tools.py does) is cheap and does not open a
     new connection each time.
     """
 
@@ -351,7 +351,7 @@ class NISSdk:
         mode, a different property/method entirely, or there may be an
         interlock not exposed by NkTi2Ax's type library. Confirm the
         correct procedure with Nikon's SDK docs or a Ti2 SDK-experienced
-        contact (see docs/microscope-notes.md) before relying on this -
+        contact (see ConfocalOrchestrator's docs/microscope-notes.md) before relying on this -
         do not attempt to fix by further trial-and-error against real
         hardware. Failure mode observed so far is safe (no motion, no
         error) - not a functional feature yet, but not a hazard either.

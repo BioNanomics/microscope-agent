@@ -91,6 +91,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   `imageio-ffmpeg` and `opencv-python`, none of which the package declared, so
   a fresh install could not run them. They are now the `analysis` optional
   group, which `all` (and so `requirements.txt`) includes.
+- `python -m acquisition.orchestration.stage_positions` ended by loading
+  `protocols/example_protocol.yaml`, which is not in this repo, so the demo
+  always failed. That step is removed. Code comments that pointed to files in
+  ConfocalOrchestrator (`docs/microscope-notes.md`, `run_protocol.py`, the
+  calibration tests) now say so, and those citing old names
+  (`mcp_server/server.py`, `acquisition_tools.py`) use the current ones.
 
 ## [0.1.0] - 2026-08-31
 
