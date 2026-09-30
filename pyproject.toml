@@ -52,6 +52,7 @@ all = [
 
 [project.scripts]
 confocal-mcp = "mcp_server.server_loop:main"
+confocal-mcp-nis = "mcp_server.server_nis:main"
 
 [project.urls]
 Homepage = "https://github.com/BioNanomics/microscope-agent"
