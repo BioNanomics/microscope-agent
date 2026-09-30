@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- `analysis/make_soundtrack.py` - original ambient soundtrack synthesised
+  with numpy (no samples, so no licensing questions), stretched to any
+  length. `--movie run.mp4` sizes it to the movie and muxes it on as AAC
+  with the video stream copied, writing `run_music.mp4`. At 39 s it
+  reproduces the Physarum Short's track exactly.
 - `acquisition/calibration/ti2_inventory.py` - read-only inventory of every
   device the Ti2 reports, with each one's valid range, unit, and `Control`
   value. Field names come from the COM type library at runtime and rows are
