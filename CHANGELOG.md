@@ -7,6 +7,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
+  surveyed by `aml18_survey`: neurons-only opening, brightfield with RFP glow,
+  trails and a live distance chart for up to three featured worms (auto-picked
+  adults, named by speed), and every track at once. Original synthesised music.
+  The speed claim uses the smaller of the raw and median-filtered ratios.
+- `analysis/physarum_short.py` - the whole-dish Physarum Short: time-lapse
+  with a live on-agar area curve, then a wipe to the green new-growth map.
+  Reuses the combined analysis folder's alignment so frames match what was
+  measured. Captions are the 23-25 Sep 2026 experiment's.
+- `analysis/short_video.py` - shared pieces for vertical YouTube Shorts:
+  1080x1920 canvas, fonts, centred text, and a writer that pipes frames into
+  the bundled ffmpeg (libx264, CRF 19) with the WAV soundtrack muxed in the
+  same pass. `--preview`-style stills instead of a render for layout checks.
+- NIS bridge (not yet run inside NIS - see `docs/nis-bridge.md`):
+  `acquisition/nis_bridge/bridge_job.py`, a JOBS Python task that serves NIS
+  macro calls (status, relative XY move, 4x/10x objective change, ND2
+  capture, saved ND experiment run/finish) on 127.0.0.1:8766;
+  `acquisition/backends/nis_bridge.py`, its client and command line; and
+  `mcp_server/server_nis.py` (`confocal-mcp-nis`), a separate MCP server
+  with confirm-gated tools. The e-stop is enforced in both client and
+  bridge; `server_loop` is unchanged.
+- `acquisition/calibration/nis_port_probe.py` - minimal JOBS task showing
+  that a port bound inside `nis_ar.exe` is reachable from outside.
 - `analysis/make_soundtrack.py` - original ambient soundtrack synthesised
   with numpy (no samples, so no licensing questions), stretched to any
   length. `--movie run.mp4` sizes it to the movie and muxes it on as AAC
@@ -77,6 +100,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   back to `~/.confocal-mcp` with a warning on stderr. Setting
   `CONFOCAL_MCP_DATA_DIR` is still honoured as-is, and a normal source
   checkout still resolves to the checkout directory.
+- The `analysis/` scripts imported `scipy`, `scikit-image`, `nd2`,
+  `imageio-ffmpeg` and `opencv-python`, none of which the package declared, so
+  a fresh install could not run them. They are now the `analysis` optional
+  group, which `all` (and so `requirements.txt`) includes.
+- `python -m acquisition.orchestration.stage_positions` ended by loading
+  `protocols/example_protocol.yaml`, which is not in this repo, so the demo
+  always failed. That step is removed. Code comments that pointed to files in
+  ConfocalOrchestrator (`docs/microscope-notes.md`, `run_protocol.py`, the
+  calibration tests) now say so, and those citing old names
+  (`mcp_server/server.py`, `acquisition_tools.py`) use the current ones.
 
 ## [0.1.0] - 2026-08-31
 

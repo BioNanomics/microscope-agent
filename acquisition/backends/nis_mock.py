@@ -1,11 +1,11 @@
 # nis_mock.py
 # ------------------------------------------------------------
 # Mock simulator for the NIS-Elements Python API ('nis' module), so
-# acquisition scripts (stage_positions.py, run_protocol.py, etc.) can be
+# acquisition scripts (stage_positions.py here, ConfocalOrchestrator's run_protocol.py) can be
 # developed and tested off the microscope PC.
 #
 # The real `nis` module only exists inside the NIS-Elements Python
-# environment on the microscope PC (see nis_jobs_connection_test.py). This mock
+# environment on the microscope PC (see ConfocalOrchestrator's nis_jobs_connection_test.py). This mock
 # reproduces the small subset of that API used by ConfocalOrchestrator -
 # XY/Z stage position, movement, and abort checks - as plain in-memory
 # state, so it can run anywhere.
@@ -26,7 +26,7 @@ from PIL import Image
 
 from acquisition.paths import captures_dir as _captures_dir, data_root as _data_root
 
-# Stage travel limits from the Nikon Ti2-E spec (see docs/microscope-notes.md),
+# Stage travel limits from the Nikon Ti2-E spec (stroke X +/-57 mm, Y +/-36.5 mm),
 # converted from mm to microns to match the units used by the NIS API.
 X_LIMIT_UM = 57_000.0
 Y_LIMIT_UM = 36_500.0
@@ -41,7 +41,7 @@ MAX_XY_STEP_UM = 5000.0
 MAX_Z_STEP_UM = 50.0
 
 # Realistic movement delay for XY_Move, based on the Ti2-E's documented max
-# XY stage speed (docs/microscope-notes.md: "Max speed: 25mm/sec"). The
+# XY stage speed (Nikon Ti2-E spec: "Max speed: 25mm/sec"). The
 # focus (Z) drive's speed isn't documented, so Z_Move uses a small fixed
 # placeholder delay instead of a physics-based one.
 XY_MAX_SPEED_UM_PER_SEC = 25_000.0
@@ -64,7 +64,7 @@ CAPTURE_DIR = _captures_dir()
 class _MockContext:
     """Mock of the NIS-Elements Jobs 'ctx' context object - only the
     abort-check method ConfocalOrchestrator actually uses (see
-    run_protocol.py's should_abort(), which calls ctx.shouldAbort()).
+    ConfocalOrchestrator's run_protocol.py should_abort(), which calls ctx.shouldAbort()).
     Always reports False - there is no UI to click Abort from in the mock.
     """
 
@@ -82,12 +82,12 @@ class MockNIS:
 
     Also exposes capture() (simulated image capture) and .ctx.shouldAbort()
     (mock Jobs context), for parity with the rest of the real API surface
-    ConfocalOrchestrator's acquisition scripts use - see run_protocol.py.
+    ConfocalOrchestrator's acquisition scripts use - see its run_protocol.py.
 
     NOTE on capture(): unlike XY_Move/Z_Move/XY_GetPosition/Z_GetPosition
-    (all confirmed against docs/microscope-notes.md's documented API),
+    (all confirmed against the API documented in ConfocalOrchestrator's docs/microscope-notes.md),
     the real capture function's name and signature are NOT confirmed yet -
-    run_protocol.py's capture_image() flags this as a TODO and guesses
+    ConfocalOrchestrator's run_protocol.py capture_image() flags this as a TODO and guesses
     `nis.Capture()` as a placeholder. `capture()` here is written to match
     this project's explicit spec for the mock, not a confirmed real
     signature - expect to rename/adjust it once the real one is confirmed.

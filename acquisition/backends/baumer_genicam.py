@@ -10,7 +10,7 @@
 # (Baumer Camera Explorer + Toshiba Teli GenICam SDK). Originally added
 # just to exercise the rest of the pipeline (focus_check, dashboard)
 # against real frames while N-SPARC capture was blocked on NIS-Elements
-# licensing/Jobs work (see docs/microscope-notes.md's "Image Capture"
+# licensing/Jobs work (see ConfocalOrchestrator's docs/microscope-notes.md, "Image Capture"
 # investigation for that history).
 #
 # 2026-08-17: now the PRIMARY capture path by deliberate decision - the
