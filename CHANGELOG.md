@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- `analysis/physarum_short.py` - the whole-dish Physarum Short: time-lapse
+  with a live on-agar area curve, then a wipe to the green new-growth map.
+  Reuses the combined analysis folder's alignment so frames match what was
+  measured. Captions are the 23-25 Sep 2026 experiment's.
 - `analysis/short_video.py` - shared pieces for vertical YouTube Shorts:
   1080x1920 canvas, fonts, centred text, and a writer that pipes frames into
   the bundled ffmpeg (libx264, CRF 19) with the WAV soundtrack muxed in the
