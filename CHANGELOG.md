@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
+  surveyed by `aml18_survey`: neurons-only opening, brightfield with RFP glow,
+  trails and a live distance chart for up to three featured worms (auto-picked
+  adults, named by speed), and every track at once. Original synthesised music.
+  The speed claim uses the smaller of the raw and median-filtered ratios.
 - `analysis/physarum_short.py` - the whole-dish Physarum Short: time-lapse
   with a live on-agar area curve, then a wipe to the green new-growth map.
   Reuses the combined analysis folder's alignment so frames match what was
