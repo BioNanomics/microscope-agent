@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 ## [Unreleased]
 
 ### Added
+- `analysis/short_video.py` - shared pieces for vertical YouTube Shorts:
+  1080x1920 canvas, fonts, centred text, and a writer that pipes frames into
+  the bundled ffmpeg (libx264, CRF 19) with the WAV soundtrack muxed in the
+  same pass. `--preview`-style stills instead of a render for layout checks.
 - NIS bridge (not yet run inside NIS - see `docs/nis-bridge.md`):
   `acquisition/nis_bridge/bridge_job.py`, a JOBS Python task that serves NIS
   macro calls (status, relative XY move, 4x/10x objective change, ND2
