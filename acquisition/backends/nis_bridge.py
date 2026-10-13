@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 
@@ -121,6 +122,8 @@ def main() -> None:
                "shutdown": lambda: b.shutdown()}[a.cmd]()
     except (estop.EStopEngaged, BridgeUnavailable) as e:
         raise SystemExit(str(e))
+    # Objective names contain a lambda; a cp1252 Windows console cannot print it.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print(json.dumps(out, indent=2, ensure_ascii=False))
 
 
