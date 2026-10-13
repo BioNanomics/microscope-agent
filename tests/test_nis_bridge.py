@@ -40,7 +40,7 @@ class FakeNIS:
         self.Stg_GetNosepiecePositions = f("Stg_GetNosepiecePositions", lambda: 6)
         self.Stg_GetNosepieceObjectiveName = f("Stg_GetNosepieceObjectiveName", self._name)
         self.GetCurrentObjName = f("GetCurrentObjName", self._current)
-        self.ChangeObjective = f("ChangeObjective", self._change)
+        self.Stg_SetNosepiecePosition = f("Stg_SetNosepiecePosition", self._turn)
         self.Capture = f("Capture", lambda: 1)
         self.ImageSaveAs = f("ImageSaveAs", self._save)
         self.CloseCurrentDocument = f("CloseCurrentDocument", lambda save: 1)
@@ -76,8 +76,10 @@ class FakeNIS:
         buf.value = self.objectives[self.position]
         return 1
 
-    def _change(self, name):
-        self.position = next(i for i, v in self.objectives.items() if v == name)
+    def _turn(self, position):
+        if position not in self.objectives:
+            return -2
+        self.position = position
         return 1
 
     def _save(self, path, kind, compression):
@@ -95,7 +97,7 @@ class FakeNIS:
         return 1
 
     def moved(self):
-        return [c for c in self.calls if c in ("StgMoveXY", "ChangeObjective", "Capture",
+        return [c for c in self.calls if c in ("StgMoveXY", "Stg_SetNosepiecePosition", "Capture",
                                                "ND_RunExperiment")]
 
 
@@ -173,13 +175,25 @@ def test_objective_allow_list(bridge, name, ok):
         nis.objectives[5] = name
     r = c.change_objective(name)
     assert ("error" not in r) is ok
-    assert ("ChangeObjective" in nis.calls) is ok
+    assert ("Stg_SetNosepiecePosition" in nis.calls) is ok
 
 
 def test_objective_change_reports_nosepiece(bridge):
     nis, url, c = bridge
     r = c.change_objective("Plan Fluor 10x Ph1 DLL")
     assert (r["nosepiece_before"], r["nosepiece_after"]) == (1, 2)
+    assert r["arrived"] is True and r["after"] == "Plan Fluor 10x Ph1 DLL"
+    assert nis.position == 2
+
+
+def test_objective_reports_a_turret_that_does_not_arrive(bridge, monkeypatch):
+    nis, url, c = bridge
+    monkeypatch.setattr(bj, "TURRET_SETTLE_S", 0.3)
+    monkeypatch.setattr(bj, "TURRET_POLL_S", 0.05)
+    nis._turn = lambda position: 1          # accepts the command, never turns
+    nis.Stg_SetNosepiecePosition = nis._fn("Stg_SetNosepiecePosition", nis._turn)
+    r = c.change_objective("Plan Fluor 10x Ph1 DLL")
+    assert r["arrived"] is False and r["nosepiece_after"] == 1
 
 
 def test_estop_blocks_in_bridge_and_client(bridge, estop_file):

@@ -13,7 +13,7 @@ except ImportError:          # off the microscope (tests): the module is only ne
 #
 #   GET  /status                      positions, objective, ND run state
 #   POST /move        {"dx", "dy"}    relative XY move, um
-#   POST /objective   {"name"}        ChangeObjective, allow-listed names only
+#   POST /objective   {"name"}        Stg_SetNosepiecePosition (turns the turret), allow-listed names only
 #   POST /capture     {"path"}        Capture, save as ND2, close the document
 #   POST /nd/run      {"experiment"}  ND_LoadExperiment + ND_RunExperiment(0)
 #   POST /nd/finish                   ND_FinishExperiment (stop after this loop)
@@ -64,6 +64,8 @@ _MAG = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[xX](?![a-zA-Z0-9])")
 ESTOP = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
                             Path.home() / ".confocal-mcp" / "ESTOP"))
 
+TURRET_SETTLE_S = 25.0          # how long to wait for the nosepiece to arrive
+TURRET_POLL_S = 0.25
 MOVE_RELATIVE = 1               # StgMoveXY 'relative' argument
 ND2_ALL_LAYERS = 14             # ImageSaveAs ImType: all layers (ND2 file)
 QUERYSAVE_NO = 2                # CloseCurrentDocument: close without asking
@@ -80,7 +82,7 @@ class Macro:
         "Stg_GetNosepiecePositions": [],
         "Stg_GetNosepieceObjectiveName": [ct.c_int, ct.c_wchar_p, ct.c_int],
         "GetCurrentObjName": [ct.c_wchar_p],
-        "ChangeObjective": [ct.c_wchar_p],
+        "Stg_SetNosepiecePosition": [ct.c_int],
         "Capture": [],
         "ImageSaveAs": [ct.c_wchar_p, ct.c_int, ct.c_int],
         "CloseCurrentDocument": [ct.c_int],
@@ -120,7 +122,7 @@ class Bridge:
         cur = ct.create_unicode_buffer(255)
         self.m.GetCurrentObjName(cur)
         names = {}
-        for i in range(0, self.m.Stg_GetNosepiecePositions() + 1):  # index base unverified
+        for i in range(0, self.m.Stg_GetNosepiecePositions() + 1):  # 0-based, checked on the scope 2026-10-13
             b = ct.create_unicode_buffer(255)
             if self.m.Stg_GetNosepieceObjectiveName(i, b, 255) == 1 and b.value:
                 names[str(i)] = b.value
@@ -153,9 +155,24 @@ class Bridge:
         if len(mags) != 1 or mags.pop() not in ALLOWED_MAGNIFICATIONS:
             return {"error": f"only {ALLOWED_MAGNIFICATIONS}x objectives are allowed, got {name!r}"}
         before = self.status()
-        rc = self.m.ChangeObjective(name)
+        # ChangeObjective only switches NIS's calibration and leaves the
+        # turret where it is (seen on the scope 2026-10-13), so turn the
+        # nosepiece itself; NIS follows the turret.
+        targets = [int(i) for i, n in before["nosepiece_objectives"].items() if n == name]
+        if len(targets) != 1:
+            return {"error": f"{name!r} is not on the nosepiece exactly once",
+                    "nosepiece_objectives": before["nosepiece_objectives"]}
+        rc = self.m.Stg_SetNosepiecePosition(targets[0])
+        deadline = time.time() + TURRET_SETTLE_S
         after = self.status()
-        return {"rc": rc, "before": before["current_objective"], "after": after["current_objective"],
+        while rc == 1 and time.time() < deadline and not (
+                after["nosepiece_position"] == targets[0] and after["current_objective"] == name):
+            time.sleep(TURRET_POLL_S)
+            after = self.status()
+        arrived = (after["nosepiece_position"] == targets[0]
+                   and after["current_objective"] == name)
+        return {"rc": rc, "arrived": arrived,
+                "before": before["current_objective"], "after": after["current_objective"],
                 "nosepiece_before": before["nosepiece_position"],
                 "nosepiece_after": after["nosepiece_position"]}
 

@@ -26,7 +26,7 @@ acquisition/backends/nis_bridge.py   e-stop checked before sending
 acquisition/nis_bridge/bridge_job.py  JOBS Python task, runs inside nis_ar.exe
    │  ctypes
    ▼
-g5_regprocs.dll  (NIS macro functions: StgMoveXY, ChangeObjective, Capture, ND_RunExperiment, ...)
+g5_regprocs.dll  (NIS macro functions: StgMoveXY, Stg_SetNosepiecePosition, Capture, ND_RunExperiment, ...)
 ```
 
 The MCP server stays in this repo's environment. Only `bridge_job.py`
@@ -83,6 +83,15 @@ If steps 7–8 show that `ND_RunExperiment` blocks, the bridge can still run
 experiments, but nothing else can be asked while one is in progress. The
 fix is to start runs in a way that returns at once. Record the result
 before changing anything.
+
+## Results on the microscope (2026-10-13)
+
+- Steps 0-4 and 11 passed. The nosepiece index is **0-based** (4x is 0).
+- **Step 5 failed with the first design.** `ChangeObjective` only switches NIS's
+  calibration label; the turret did not move (Ti2 SDK still read position 1).
+  The bridge now calls `Stg_SetNosepiecePosition` and reports `arrived` once the
+  turret and NIS's objective name both match. **Re-run step 5 with the new job.**
+- Steps 6-10 not run yet.
 
 ## Safety rules (enforced in code)
 
