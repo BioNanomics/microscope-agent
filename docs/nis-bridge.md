@@ -106,6 +106,6 @@ before changing anything.
 - Objective changes are limited to **4× and 10×**, the long working distances.
 - MCP tools that move or acquire need **`confirm=True`**.
 - `nis_capture` saves only into the capture folder
-  (`CONFOCAL_NIS_CAPTURE_DIR`, else `data/nis_captures`), by plain file name,
+  (`CONFOCAL_NIS_CAPTURE_DIR`, else `data/NIS/captures`; ND experiments save wherever their "Save to File" path points, use `data/NIS/nd_runs`), by plain file name,
   and never overwrites.
 - The bridge listens on **127.0.0.1** only.

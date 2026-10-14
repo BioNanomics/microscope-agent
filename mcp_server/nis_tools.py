@@ -58,8 +58,8 @@ def _checked(result: dict) -> dict:
 
 
 def capture_dir() -> Path:
-    """Where nis_capture writes: CONFOCAL_NIS_CAPTURE_DIR, else <data>/data/nis_captures."""
-    d = Path(os.environ.get("CONFOCAL_NIS_CAPTURE_DIR") or data_root() / "data" / "nis_captures")
+    """Where nis_capture writes: CONFOCAL_NIS_CAPTURE_DIR, else <data>/data/NIS/captures."""
+    d = Path(os.environ.get("CONFOCAL_NIS_CAPTURE_DIR") or data_root() / "data" / "NIS" / "captures")
     d.mkdir(parents=True, exist_ok=True)
     return d
 
