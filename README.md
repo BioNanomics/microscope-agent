@@ -82,6 +82,16 @@ unchanged. Setup, safety rules and the on-scope test plan:
 ```
 python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs
 confocal-mcp-nis                                         # the MCP server
+python -m mcp_server.server_nis                          # same, from a source checkout
+```
+
+MCP client config for a source checkout (adjust the path to this repo's venv):
+
+```json
+{ "mcpServers": { "confocal-nis": {
+    "command": "D:\\path\\to\\microscope-agent\\.venv\\Scripts\\python.exe",
+    "args": ["-m", "mcp_server.server_nis"],
+    "cwd": "D:\\path\\to\\microscope-agent" } } }
 ```
 
 ## Tests
