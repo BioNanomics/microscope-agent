@@ -20,10 +20,12 @@
 #   * captures are written only under the data folder, by file name - a
 #     chat prompt cannot choose an arbitrary path
 #   * nis_finish_experiment and estop never need confirm: they only stop
+#   * a refusal or failure from the bridge raises, so a client never sees it as success
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -41,6 +43,18 @@ def _require_confirm(confirm: bool, what: str) -> None:
 
 def _bridge() -> NISBridge:
     return NISBridge()
+
+
+def _checked(result: dict) -> dict:
+    """Turn a refused or failed bridge answer into an MCP tool error.
+
+    The bridge reports refusals (move cap, e-stop, bad name, an ND run
+    already going) as an ordinary answer with an "error" key; returned as
+    is, an MCP client sees success. A turret that did not arrive and a
+    capture that left no file are failures too."""
+    if "error" in result or result.get("arrived") is False or result.get("saved") is False:
+        raise RuntimeError("NIS bridge: " + json.dumps(result, ensure_ascii=False))
+    return result
 
 
 def capture_dir() -> Path:
@@ -64,7 +78,7 @@ def nis_move_relative(dx_um: float, dy_um: float, confirm: bool = False) -> dict
     position before and after - treat 'after_um' as ground truth.
     Requires confirm=True. Z cannot be moved from here."""
     _require_confirm(confirm, "nis_move_relative")
-    return _bridge().move_relative(dx_um, dy_um)
+    return _checked(_bridge().move_relative(dx_um, dy_um))
 
 
 def nis_change_objective(name: str, confirm: bool = False) -> dict:
@@ -74,7 +88,7 @@ def nis_change_objective(name: str, confirm: bool = False) -> dict:
     the sample). Returns the objective and nosepiece position before and
     after. Requires confirm=True."""
     _require_confirm(confirm, "nis_change_objective")
-    return _bridge().change_objective(name)
+    return _checked(_bridge().change_objective(name))
 
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,80}$")
@@ -90,7 +104,7 @@ def nis_capture(filename: str, confirm: bool = False) -> dict:
     stem = filename[:-4] if filename.lower().endswith(".nd2") else filename
     if not _SAFE_NAME.match(stem) or ".." in stem:
         raise ValueError("filename must be a plain name (letters, digits, space, _ . -), no folders")
-    return _bridge().capture(str(capture_dir() / f"{stem}.nd2"))
+    return _checked(_bridge().capture(str(capture_dir() / f"{stem}.nd2")))
 
 
 def nis_run_experiment(experiment: str, confirm: bool = False) -> dict:
@@ -100,10 +114,10 @@ def nis_run_experiment(experiment: str, confirm: bool = False) -> dict:
     not return until the experiment ends. Refused if one is already
     running. Requires confirm=True."""
     _require_confirm(confirm, "nis_run_experiment")
-    return _bridge().nd_run(experiment)
+    return _checked(_bridge().nd_run(experiment))
 
 
 def nis_finish_experiment() -> dict:
     """End the running ND experiment after its current time loop; NIS saves
     the frames captured so far. Never needs confirm - it only stops."""
-    return _bridge().nd_finish()
+    return _checked(_bridge().nd_finish())

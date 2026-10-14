@@ -297,3 +297,27 @@ def test_idle_bridge_stops_itself(estop_file):
     t.start()
     t.join(5)
     assert not t.is_alive()
+
+
+def test_tools_raise_on_bridge_refusals_and_failures(bridge, tmp_path, monkeypatch, estop_file):
+    nis, url, c = bridge
+    monkeypatch.setenv("CONFOCAL_NIS_CAPTURE_DIR", str(tmp_path / "caps"))
+    with pytest.raises(RuntimeError, match="refused"):                  # move cap
+        nis_tools.nis_move_relative(1500, 0, confirm=True)
+    with pytest.raises(RuntimeError, match="allowed"):                  # objective not on the allow-list
+        nis_tools.nis_change_objective("Plan Apo 60x Oil", confirm=True)
+    nis_tools.nis_capture("once", confirm=True)
+    with pytest.raises(RuntimeError, match="already exists"):           # never overwrites
+        nis_tools.nis_capture("once", confirm=True)
+    nis.load_rc = -2
+    with pytest.raises(RuntimeError, match="ND_LoadExperiment"):
+        nis_tools.nis_run_experiment("missing", confirm=True)
+
+
+def test_tool_raises_when_the_turret_does_not_arrive(bridge, monkeypatch):
+    nis, url, c = bridge
+    monkeypatch.setattr(bj, "TURRET_SETTLE_S", 0.3)
+    monkeypatch.setattr(bj, "TURRET_POLL_S", 0.05)
+    nis.Stg_SetNosepiecePosition = nis._fn("Stg_SetNosepiecePosition", lambda position: 1)
+    with pytest.raises(RuntimeError, match='"arrived": false'):
+        nis_tools.nis_change_objective("Plan Fluor 10x Ph1 DLL", confirm=True)
