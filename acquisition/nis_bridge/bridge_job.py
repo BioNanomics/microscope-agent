@@ -13,7 +13,8 @@ except ImportError:          # off the microscope (tests): the module is only ne
 #
 #   GET  /status                      positions, objective, ND run state
 #   POST /move        {"dx", "dy"}    relative XY move, um
-#   POST /objective   {"name"}        Stg_SetNosepiecePosition (turns the turret), allow-listed names only
+#   POST /objective   {"name"}        Stg_SetNosepiecePosition (turns the turret) then ChangeObjective
+#                                     (NIS calibration), allow-listed names only
 #   POST /capture     {"path"}        Capture, save as ND2, close the document
 #   POST /nd/run      {"experiment"}  ND_LoadExperiment + ND_RunExperiment(0)
 #   POST /nd/finish                   ND_FinishExperiment (stop after this loop)
@@ -91,6 +92,7 @@ class Macro:
         "Stg_GetNosepieceObjectiveName": [ct.c_int, ct.c_wchar_p, ct.c_int],
         "GetCurrentObjName": [ct.c_wchar_p],
         "Stg_SetNosepiecePosition": [ct.c_int],
+        "ChangeObjective": [ct.c_wchar_p],
         "Capture": [],
         "ImageSaveAs": [ct.c_wchar_p, ct.c_int, ct.c_int],
         "CloseCurrentDocument": [ct.c_int],
@@ -163,9 +165,12 @@ class Bridge:
         if len(mags) != 1 or mags.pop() not in ALLOWED_MAGNIFICATIONS:
             return {"error": f"only {ALLOWED_MAGNIFICATIONS}x objectives are allowed, got {name!r}"}
         before = self.status()
-        # ChangeObjective only switches NIS's calibration and leaves the
-        # turret where it is (seen on the scope 2026-10-13), so turn the
-        # nosepiece itself; NIS follows the turret.
+        # Two separate things, both needed (seen on the scope 2026-10-13/14):
+        # Stg_SetNosepiecePosition turns the turret but NIS's objective name
+        # and calibration stay on the old objective, and ChangeObjective
+        # updates the name and calibration but leaves the turret where it
+        # is. So turn the turret, wait for it to arrive, and only then tell
+        # NIS - never switch the calibration for a turret that did not move.
         targets = [int(i) for i, n in before["nosepiece_objectives"].items() if n == name]
         if len(targets) != 1:
             return {"error": f"{name!r} is not on the nosepiece exactly once",
@@ -173,13 +178,16 @@ class Bridge:
         rc = self.m.Stg_SetNosepiecePosition(targets[0])
         deadline = time.time() + TURRET_SETTLE_S
         after = self.status()
-        while rc == 1 and time.time() < deadline and not (
-                after["nosepiece_position"] == targets[0] and after["current_objective"] == name):
+        while rc == 1 and time.time() < deadline and after["nosepiece_position"] != targets[0]:
             time.sleep(TURRET_POLL_S)
+            after = self.status()
+        rc_calibration = None
+        if after["nosepiece_position"] == targets[0]:
+            rc_calibration = self.m.ChangeObjective(name)
             after = self.status()
         arrived = (after["nosepiece_position"] == targets[0]
                    and after["current_objective"] == name)
-        return {"rc": rc, "arrived": arrived,
+        return {"rc": rc, "rc_calibration": rc_calibration, "arrived": arrived,
                 "before": before["current_objective"], "after": after["current_objective"],
                 "nosepiece_before": before["nosepiece_position"],
                 "nosepiece_after": after["nosepiece_position"]}

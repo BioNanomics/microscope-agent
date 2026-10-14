@@ -28,6 +28,7 @@ class FakeNIS:
         self.objectives = {1: "PLAN APO \u03bbD 4x OFN25", 2: "Plan Fluor 10x Ph1 DLL",
                            4: "Plan Apo 60x Oil"}
         self.position = 1
+        self.label = self.objectives[1]     # NIS's objective name: only ChangeObjective moves it
         self.nd_running = False
         self.load_rc = 1
         self.calls = []
@@ -41,6 +42,7 @@ class FakeNIS:
         self.Stg_GetNosepieceObjectiveName = f("Stg_GetNosepieceObjectiveName", self._name)
         self.GetCurrentObjName = f("GetCurrentObjName", self._current)
         self.Stg_SetNosepiecePosition = f("Stg_SetNosepiecePosition", self._turn)
+        self.ChangeObjective = f("ChangeObjective", self._change)
         self.Capture = f("Capture", lambda: 1)
         self.ImageSaveAs = f("ImageSaveAs", self._save)
         self.CloseCurrentDocument = f("CloseCurrentDocument", lambda save: 1)
@@ -73,7 +75,11 @@ class FakeNIS:
         return -2
 
     def _current(self, buf):
-        buf.value = self.objectives[self.position]
+        buf.value = self.label
+        return 1
+
+    def _change(self, name):
+        self.label = name                   # calibration only; the turret stays put
         return 1
 
     def _turn(self, position):
@@ -97,7 +103,7 @@ class FakeNIS:
         return 1
 
     def moved(self):
-        return [c for c in self.calls if c in ("StgMoveXY", "Stg_SetNosepiecePosition", "Capture",
+        return [c for c in self.calls if c in ("StgMoveXY", "Stg_SetNosepiecePosition", "ChangeObjective", "Capture",
                                                "ND_RunExperiment")]
 
 
@@ -183,7 +189,9 @@ def test_objective_change_reports_nosepiece(bridge):
     r = c.change_objective("Plan Fluor 10x Ph1 DLL")
     assert (r["nosepiece_before"], r["nosepiece_after"]) == (1, 2)
     assert r["arrived"] is True and r["after"] == "Plan Fluor 10x Ph1 DLL"
-    assert nis.position == 2
+    assert nis.position == 2 and nis.label == "Plan Fluor 10x Ph1 DLL"
+    # turret first, then NIS's calibration
+    assert nis.calls.index("Stg_SetNosepiecePosition") < nis.calls.index("ChangeObjective")
 
 
 def test_objective_reports_a_turret_that_does_not_arrive(bridge, monkeypatch):
@@ -194,6 +202,7 @@ def test_objective_reports_a_turret_that_does_not_arrive(bridge, monkeypatch):
     nis.Stg_SetNosepiecePosition = nis._fn("Stg_SetNosepiecePosition", nis._turn)
     r = c.change_objective("Plan Fluor 10x Ph1 DLL")
     assert r["arrived"] is False and r["nosepiece_after"] == 1
+    assert "ChangeObjective" not in nis.calls       # no calibration switch for a turret that stayed put
 
 
 def test_estop_blocks_in_bridge_and_client(bridge, estop_file):

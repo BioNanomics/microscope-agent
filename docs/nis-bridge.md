@@ -91,8 +91,10 @@ before changing anything.
 - Steps 0-4 and 11 passed. The nosepiece index is **0-based** (4x is 0).
 - **Step 5 failed with the first design.** `ChangeObjective` only switches NIS's
   calibration label; the turret did not move (Ti2 SDK still read position 1).
-  The bridge now calls `Stg_SetNosepiecePosition` and reports `arrived` once the
-  turret and NIS's objective name both match. **Re-run step 5 with the new job.**
+  `Stg_SetNosepiecePosition` alone turns the turret but leaves NIS's objective
+  name and calibration on the old objective (2026-10-14), so the bridge now
+  turns the turret, waits for it, then calls `ChangeObjective`, and reports
+  `arrived` once position and name both match. **Re-run step 5 with the new job.**
 - Steps 6-10 not run yet.
 
 ## Safety rules (enforced in code)
