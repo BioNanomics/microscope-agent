@@ -7,7 +7,7 @@
 #
 # Saved positions persist to protocols/stage_positions.json, so they can
 # be reused across sessions (e.g. to build up a protocol's `positions:`
-# list - see protocols/example_protocol.yaml).
+# list - see load_positions_from_yaml).
 #
 # Run directly for a quick sanity check (works on Mac/Linux/Windows dev
 # machines via MockNIS, no NIS-Elements required), from the repo root:
@@ -22,14 +22,14 @@ import yaml  # PyYAML - reads a protocol file's `positions:` list
 
 from acquisition.paths import data_root as _data_root
 
-# Stage travel limits (see nis_mock.py / docs/microscope-notes.md's hardware
+# Stage travel limits (see nis_mock.py, from the Nikon Ti2-E hardware
 # spec) - imported unconditionally since nis_mock.py has no hardware
 # dependency of its own, so these constants are always available regardless
 # of whether the real `nis` module or MockNIS ends up being used below.
 from acquisition.backends.nis_mock import X_LIMIT_UM, Y_LIMIT_UM
 
 # ── 1. Connect to the NIS-Elements Python API, or fall back to the mock ─────
-# Unlike nis_jobs_connection_test.py / run_protocol.py (which only ever run ON the
+# Unlike ConfocalOrchestrator's nis_jobs_connection_test.py / run_protocol.py (which only ever run ON the
 # microscope PC and hard-fail without the real API), this module is meant
 # to be usable for offline development too, so it falls back to MockNIS
 # when the real `nis` module isn't available.
@@ -38,7 +38,7 @@ try:
 except ImportError:
     from acquisition.backends.nis_mock import MockNIS
     nis = MockNIS()
-    # stderr, not stdout - this module is imported by mcp_server/server.py,
+    # stderr, not stdout - this module is imported (via loop_tools.py) by mcp_server/server_loop.py,
     # whose stdout is the MCP stdio JSON-RPC channel; anything else written
     # there corrupts the protocol stream.
     print(
@@ -72,7 +72,7 @@ def to_plain_float(value) -> float:
 def validate_position(x: float, y: float) -> None:
     """Raise ValueError if (x, y) - in microns - is outside the Ti2-E's
     stage travel limits (X +/-57mm, Y +/-36.5mm - see nis_mock.X_LIMIT_UM /
-    Y_LIMIT_UM, sourced from docs/microscope-notes.md's hardware spec).
+    Y_LIMIT_UM, sourced from the Nikon Ti2-E hardware spec).
 
     Called before a position is saved (save_current) or moved to (go_to),
     so a bad reading or a hand-edited positions file can't silently send
@@ -149,8 +149,8 @@ class StagePositionManager:
         return position
 
     def load_positions_from_yaml(self, yaml_path: Path) -> dict:
-        """Load the `positions:` list from a protocol YAML file (see
-        protocols/example_protocol.yaml) and define each one by its
+        """Load the `positions:` list from a protocol YAML file - entries of
+        `label`, `x`, `y`, `z` (microns) - and define each one by its
         `label`, validating each against the stage's travel limits.
 
         Returns the newly-defined positions as {label: {"x", "y", "z"}}.
@@ -206,8 +206,8 @@ class StagePositionManager:
         ValueError if the saved position is outside the stage's travel
         limits (see validate_position) - e.g. from a hand-edited positions
         file. Callers driving real hardware (not MockNIS) should confirm
-        with the user before calling this - the same way nis_jobs_connection_test.py
-        and run_protocol.py confirm before any stage move.
+        with the user before calling this - the same way ConfocalOrchestrator's
+        nis_jobs_connection_test.py and run_protocol.py confirm before any stage move.
 
         XY moves first, then Z - if Z_Move then fails (e.g. nis_sdk's
         per-call step-size safety cap, since a saved position's Z commonly
@@ -257,10 +257,6 @@ if __name__ == "__main__":
     print("  Stage now at:", nis.XY_GetPosition(), nis.Z_GetPosition())
 
     print(f"\nPositions saved to: {POSITIONS_FILE}")
-
-    protocol_path = Path(__file__).resolve().parent.parent.parent / "protocols" / "example_protocol.yaml"
-    print(f"\nLoading positions from {protocol_path}...")
-    print(" ", manager.load_positions_from_yaml(protocol_path))
 
     print("\nSummary of all saved positions:")
     manager.print_summary()
