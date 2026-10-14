@@ -279,3 +279,12 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
     assert asyncio.run(names()) == {"nis_status", "nis_move_relative", "nis_change_objective",
                                     "nis_capture", "nis_run_experiment", "nis_finish_experiment",
                                     "estop"}
+
+
+def test_idle_bridge_stops_itself(estop_file):
+    nis = FakeNIS()
+    t = threading.Thread(target=bj.serve, args=(bj.Bridge(bj.Macro(nis)),),
+                         kwargs=dict(port=0, idle_stop_s=0.5), daemon=True)
+    t.start()
+    t.join(5)
+    assert not t.is_alive()

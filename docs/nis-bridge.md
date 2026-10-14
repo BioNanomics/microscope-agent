@@ -55,8 +55,10 @@ separate server, `confocal-mcp-nis`.
    as `NIS bridge`.
 4. Run the job. Its log shows
    `NIS bridge v1 listening on 127.0.0.1:8766, pid <NIS pid>`.
-5. The bridge runs until you **Abort** the job, or until
-   `python -m acquisition.backends.nis_bridge shutdown`.
+5. Stop it with `python -m acquisition.backends.nis_bridge shutdown`.
+   **Do not use the JOBS Abort button**: a Python task cannot be interrupted
+   by it and NIS freezes (seen 2026-10-14; `limjob.RunContext` has no abort
+   flag). The job also ends by itself after 4 h with no request.
 
 ## Test plan for the microscope
 

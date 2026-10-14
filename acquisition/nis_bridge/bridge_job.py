@@ -19,6 +19,13 @@ except ImportError:          # off the microscope (tests): the module is only ne
 #   POST /nd/finish                   ND_FinishExperiment (stop after this loop)
 #   POST /shutdown                    stop serving and end the job
 #
+# STOPPING THE JOB. Do NOT use the JOBS Abort button: a Python task's
+# RunContext (limjob.py) has no abort flag, so Abort cannot interrupt the
+# serving loop and NIS freezes waiting for it (seen on the scope
+# 2026-10-14). Stop it with
+#   python -m acquisition.backends.nis_bridge shutdown
+# As a backstop the job also ends itself after IDLE_STOP_S with no request.
+#
 # WHY A BRIDGE AND NOT THE MCP SERVER ITSELF INSIDE NIS. Nothing has to be
 # installed into NIS's own Python (Nikon pins its packages), a crash in our
 # code cannot take NIS down with it, and the MCP server keeps the e-stop,
@@ -64,6 +71,7 @@ _MAG = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[xX](?![a-zA-Z0-9])")
 ESTOP = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
                             Path.home() / ".confocal-mcp" / "ESTOP"))
 
+IDLE_STOP_S = 4 * 3600.0        # end the job if nothing has asked for this long
 TURRET_SETTLE_S = 25.0          # how long to wait for the nosepiece to arrive
 TURRET_POLL_S = 0.25
 MOVE_RELATIVE = 1               # StgMoveXY 'relative' argument
@@ -264,9 +272,13 @@ def make_handler(jobs: "queue.Queue", stop: threading.Event, timeout_s: float = 
 
 
 def serve(bridge: Bridge, port: int = PORT, should_abort=lambda: False,
-          stop: threading.Event | None = None, on_ready=None) -> None:
-    """Serve until /shutdown, should_abort() or `stop` is set. NIS calls run
+          stop: threading.Event | None = None, on_ready=None,
+          idle_stop_s: float | None = None) -> None:
+    """Serve until /shutdown, should_abort() or `stop` is set, or until no
+    request has arrived for idle_stop_s (default IDLE_STOP_S). NIS calls run
     here, on the calling thread; HTTP requests are handled on others."""
+    idle_stop_s = IDLE_STOP_S if idle_stop_s is None else idle_stop_s
+    last_request = time.time()
     jobs = queue.Queue()
     stop = stop or threading.Event()
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), make_handler(jobs, stop))
@@ -279,11 +291,15 @@ def serve(bridge: Bridge, port: int = PORT, should_abort=lambda: False,
             try:
                 fn, body, box = jobs.get(timeout=0.2)
             except queue.Empty:
+                if time.time() - last_request > idle_stop_s:
+                    print(f"NIS bridge idle for {idle_stop_s:.0f} s - stopping")
+                    break
                 continue
             try:
                 box.put(fn(bridge, body))
             except Exception as e:
                 box.put({"error": f"{type(e).__name__}: {e}"})
+            last_request = time.time()
     finally:
         srv.shutdown()
         srv.server_close()
@@ -292,6 +308,7 @@ def serve(bridge: Bridge, port: int = PORT, should_abort=lambda: False,
 
 def run(imgs: "tuple[limjob.Image]", Job: "limjob.JobParam", macro: "limjob.MacroParam",
         ctx: "limjob.RunContext"):
-    """JOBS entry point: serve until Abort or POST /shutdown. The hints are
-    the JOBS template's own, as strings so this file imports off NIS."""
-    serve(Bridge(Macro()), should_abort=getattr(ctx, "shouldAbort", lambda: False))
+    """JOBS entry point: serve until POST /shutdown (or the idle backstop).
+    The Abort button cannot stop it - see the header. The hints are the
+    JOBS template's own, as strings so this file imports off NIS."""
+    serve(Bridge(Macro()))
