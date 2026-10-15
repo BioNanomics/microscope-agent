@@ -81,6 +81,7 @@ unchanged. Setup, safety rules and the on-scope test plan:
 
 ```
 python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs
+python -m acquisition.nis_monitor                        # live view: status + every action (logs/nis/)
 confocal-mcp-nis                                         # the MCP server
 python -m mcp_server.server_nis                          # same, from a source checkout
 ```

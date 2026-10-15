@@ -8,6 +8,7 @@
 #   python -m acquisition.backends.nis_bridge status
 #   python -m acquisition.backends.nis_bridge move 100 0
 #   python -m acquisition.backends.nis_bridge objective "Plan Fluor 10x Ph1 DLL"
+#   python -m acquisition.backends.nis_bridge optconfs
 #   python -m acquisition.backends.nis_bridge capture D:\...\check.nd2
 #   python -m acquisition.backends.nis_bridge nd-run "C. elegans 3h"
 #   python -m acquisition.backends.nis_bridge nd-finish
@@ -17,6 +18,10 @@
 # never leaves this process, so a stopped microscope does not depend on
 # the NIS side having been updated. Stopping an ND run (nd-finish) and
 # shutting the bridge down are always allowed - they only end things.
+#
+# Every action here is also written to the NIS event log
+# (acquisition/nis_events.py), which `python -m acquisition.nis_monitor`
+# shows live. Status reads are not logged (the monitor polls them).
 #
 # CONFOCAL_NIS_BRIDGE_URL overrides the address (default
 # http://127.0.0.1:8766).
@@ -28,10 +33,11 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
-from acquisition import estop
+from acquisition import estop, nis_events
 
 DEFAULT_URL = "http://127.0.0.1:8766"
 
@@ -67,31 +73,55 @@ class NISBridge:
     def status(self) -> dict:
         return self._call("GET", "/status")
 
+    def _act(self, action: str, params: dict, send, guarded: bool = True) -> dict:
+        """Run one action and write it to the NIS event log (nis_events.py):
+        a "start" line, then "ok", "failed", "refused" or "error"."""
+        nis_events.record(action, "start", params=params)
+        t0 = time.time()
+        try:
+            if guarded:
+                estop.check()
+            result = send()
+        except estop.EStopEngaged as e:
+            nis_events.record(action, "refused", params=params, message=str(e))
+            raise
+        except BridgeUnavailable as e:
+            nis_events.record(action, "error", params=params, message=str(e))
+            raise
+        phase = "failed" if "error" in result else "ok"
+        nis_events.record(action, phase, params=params, result=result,
+                          elapsed_s=round(time.time() - t0, 1))
+        return result
+
+    def optical_configs(self) -> dict:
+        return self._call("GET", "/optconfs")
+
     # Motion / acquisition: e-stop checked before anything is sent
     def move_relative(self, dx_um: float, dy_um: float) -> dict:
-        estop.check()
-        return self._call("POST", "/move", {"dx": dx_um, "dy": dy_um})
+        return self._act("move", {"dx": dx_um, "dy": dy_um},
+                         lambda: self._call("POST", "/move", {"dx": dx_um, "dy": dy_um}))
 
     def change_objective(self, name: str) -> dict:
-        estop.check()
-        return self._call("POST", "/objective", {"name": name})
+        return self._act("objective", {"name": name},
+                         lambda: self._call("POST", "/objective", {"name": name}))
 
     def capture(self, path: str) -> dict:
-        estop.check()
-        return self._call("POST", "/capture", {"path": path}, timeout_s=300)
+        return self._act("capture", {"path": path},
+                         lambda: self._call("POST", "/capture", {"path": path}, timeout_s=300))
 
     def nd_run(self, experiment: str, timeout_s: float = 7200.0) -> dict:
         # ND_RunExperiment may block until the run ends (unverified), so
         # the answer can take as long as the run itself.
-        estop.check()
-        return self._call("POST", "/nd/run", {"experiment": experiment}, timeout_s=timeout_s)
+        return self._act("nd_run", {"experiment": experiment},
+                         lambda: self._call("POST", "/nd/run", {"experiment": experiment},
+                                            timeout_s=timeout_s))
 
     # Always allowed: these only end things
     def nd_finish(self) -> dict:
-        return self._call("POST", "/nd/finish")
+        return self._act("nd_finish", {}, lambda: self._call("POST", "/nd/finish"), guarded=False)
 
     def shutdown(self) -> dict:
-        return self._call("POST", "/shutdown")
+        return self._act("shutdown", {}, lambda: self._call("POST", "/shutdown"), guarded=False)
 
 
 def main() -> None:
@@ -103,6 +133,7 @@ def main() -> None:
     m.add_argument("dx", type=float); m.add_argument("dy", type=float)
     o = sub.add_parser("objective", help="exact name as listed by status (4x/10x only)")
     o.add_argument("name")
+    sub.add_parser("optconfs", help="list the optical configurations")
     c = sub.add_parser("capture", help="capture one image and save it as .nd2")
     c.add_argument("path")
     r = sub.add_parser("nd-run", help="load a saved ND experiment by name and run it")
@@ -116,6 +147,7 @@ def main() -> None:
         out = {"status": lambda: b.status(),
                "move": lambda: b.move_relative(a.dx, a.dy),
                "objective": lambda: b.change_objective(a.name),
+               "optconfs": lambda: b.optical_configs(),
                "capture": lambda: b.capture(a.path),
                "nd-run": lambda: b.nd_run(a.experiment),
                "nd-finish": lambda: b.nd_finish(),

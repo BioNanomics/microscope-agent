@@ -91,12 +91,19 @@ def nis_change_objective(name: str, confirm: bool = False) -> dict:
     return _checked(_bridge().change_objective(name))
 
 
+def nis_list_optical_configs() -> dict:
+    """Read-only: the names of the optical configurations defined in
+    NIS-Elements, named "Group:Configuration". There is no tool to select
+    one: set it in NIS-Elements before nis_capture."""
+    return _bridge().optical_configs()
+
+
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,80}$")
 
 
 def nis_capture(filename: str, confirm: bool = False) -> dict:
     """Capture one image with the current NIS-Elements acquisition settings
-    (lasers, channels, scan) and save it as an ND2 file in the NIS capture
+    (the optical configuration active in NIS - lasers, channels, scan) and save it as an ND2 file in the NIS capture
     folder. `filename` is a plain name such as "aml18_check" - no folders;
     ".nd2" is added if missing and an existing file is never overwritten.
     Returns the saved path. Requires confirm=True."""
