@@ -15,6 +15,7 @@ except ImportError:          # off the microscope (tests): the module is only ne
 #   POST /move        {"dx", "dy"}    relative XY move, um
 #   POST /objective   {"name"}        Stg_SetNosepiecePosition (turns the turret) then ChangeObjective
 #                                     (NIS calibration), allow-listed names only
+#   GET  /optconfs                    names of the optical configurations (read-only)
 #   POST /capture     {"path"}        Capture, save as ND2, close the document
 #   POST /nd/run      {"experiment"}  ND_LoadExperiment + ND_RunExperiment(0)
 #   POST /nd/finish                   ND_FinishExperiment (stop after this loop)
@@ -39,10 +40,14 @@ except ImportError:          # off the microscope (tests): the module is only ne
 # (Docs/nis/eng_ar on the microscope PC). A macro char* is wchar_t* in
 # this build (limpy passes WaitText's text as c_wchar_p).
 #
-# THREADING. NIS is not known to be thread-safe, so every NIS call runs on
-# the job's own thread in run(); the HTTP threads only queue requests and
-# wait for the answer. A call that takes long (ND_RunExperiment may block
-# until the run ends - unverified) delays the requests queued behind it.
+# THREADING. A JOBS Python task runs on NIS's main thread, and serving there
+# froze NIS (2026-10-15). So run() starts serve() on a worker thread and
+# returns. NIS is not known to be thread-safe, so every NIS call still runs
+# on that one worker thread; the HTTP threads only queue requests and wait
+# for the answer. Whether macro calls (Ti2 moves, Capture) are allowed off
+# the main thread is UNVERIFIED. A call that takes long (ND_RunExperiment
+# may block until the run ends - unverified) delays the requests queued
+# behind it.
 #
 # SAFETY, enforced here as well as in the client:
 #   * motion and acquisition only on POST, so a browser cannot trigger them
@@ -93,6 +98,8 @@ class Macro:
         "GetCurrentObjName": [ct.c_wchar_p],
         "Stg_SetNosepiecePosition": [ct.c_int],
         "ChangeObjective": [ct.c_wchar_p],
+        "GetOptConfCount": [],
+        "GetOptConfName": [ct.c_int, ct.c_wchar_p, ct.c_int],
         "Capture": [],
         "ImageSaveAs": [ct.c_wchar_p, ct.c_int, ct.c_int],
         "CloseCurrentDocument": [ct.c_int],
@@ -192,6 +199,20 @@ class Bridge:
                 "nosepiece_before": before["nosepiece_position"],
                 "nosepiece_after": after["nosepiece_position"]}
 
+    def optical_configs(self) -> dict:
+        names = []
+        for i in range(0, self.m.GetOptConfCount() + 1):    # index base unverified: try 0..n
+            b = ct.create_unicode_buffer(255)
+            self.m.GetOptConfName(i, b, 255)
+            if b.value and b.value not in names:
+                names.append(b.value)
+        return {"optical_configs": names}
+
+    # No select: SelectOptConf called from this worker thread switched the
+    # devices ("end success" in NIS's log) and then froze NIS's main thread
+    # until the bridge was shut down (2026-10-15). Set the optical
+    # configuration in NIS, or find a way to run it on the UI thread first.
+
     def capture(self, path: str) -> dict:
         if (r := self._refuse_if_stopped("capture")):
             return r
@@ -230,6 +251,7 @@ ROUTES = {
     ("GET", "/status"): lambda b, body: b.status(),
     ("POST", "/move"): lambda b, body: b.move(float(body.get("dx", 0)), float(body.get("dy", 0))),
     ("POST", "/objective"): lambda b, body: b.objective(str(body.get("name", ""))),
+    ("GET", "/optconfs"): lambda b, body: b.optical_configs(),
     ("POST", "/capture"): lambda b, body: b.capture(str(body.get("path", ""))),
     ("POST", "/nd/run"): lambda b, body: b.nd_run(str(body.get("experiment", ""))),
     ("POST", "/nd/finish"): lambda b, body: b.nd_finish(),
@@ -289,6 +311,10 @@ def serve(bridge: Bridge, port: int = PORT, should_abort=lambda: False,
     last_request = time.time()
     jobs = queue.Queue()
     stop = stop or threading.Event()
+    # On Windows SO_REUSEADDR (the default here) lets a second bridge bind the
+    # same port, so re-running the job started a duplicate whose shutdown had
+    # to be sent twice (seen 2026-10-15). Without it a second run fails to bind.
+    http.server.ThreadingHTTPServer.allow_reuse_address = False
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), make_handler(jobs, stop))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"NIS bridge v{VERSION} listening on 127.0.0.1:{srv.server_address[1]}, pid {os.getpid()}")
@@ -316,7 +342,13 @@ def serve(bridge: Bridge, port: int = PORT, should_abort=lambda: False,
 
 def run(imgs: "tuple[limjob.Image]", Job: "limjob.JobParam", macro: "limjob.MacroParam",
         ctx: "limjob.RunContext"):
-    """JOBS entry point: serve until POST /shutdown (or the idle backstop).
-    The Abort button cannot stop it - see the header. The hints are the
-    JOBS template's own, as strings so this file imports off NIS."""
-    serve(Bridge(Macro()))
+    """JOBS entry point. Serving on the job's own thread froze NIS (step 0 of
+    docs/nis-bridge.md, 2026-10-15): a Python task runs on NIS's main thread,
+    so a loop that never returns blocks the UI. So serve on a worker thread
+    and return at once; the job shows as finished while the bridge keeps
+    listening. Stop it with POST /shutdown (or the idle backstop). Whether
+    NIS macro calls work from a non-main thread is UNVERIFIED: try status
+    first, then the moves. The hints are the JOBS template's own, as strings
+    so this file imports off NIS."""
+    threading.Thread(target=serve, args=(Bridge(Macro()),), name="nis-bridge",
+                     daemon=True).start()
