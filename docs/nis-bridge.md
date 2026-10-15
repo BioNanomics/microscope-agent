@@ -60,6 +60,17 @@ separate server, `confocal-mcp-nis`.
    by it and NIS freezes (seen 2026-10-14; `limjob.RunContext` has no abort
    flag). The job also ends by itself after 4 h with no request.
 
+## Live monitor
+
+`python -m acquisition.nis_monitor` in a second terminal shows the bridge
+state (stage, Z, objective, ND run, e-stop) above a scrolling list of every
+action sent through the bridge, from any process, so you can watch what
+Claude does. Actions are logged to `logs/nis/events-<date>.jsonl` as a
+`start` line and then `ok`, `failed`, `refused` or `error`. While one long
+call (an ND run, a capture) holds the bridge, the monitor shows BUSY and
+names the action and how long it has run. Use it while working through the
+test plan below.
+
 ## Test plan for the microscope
 
 Run each step from a terminal in the repo (`.venv\Scripts\python -m
@@ -95,6 +106,37 @@ before changing anything.
   name and calibration on the old objective (2026-10-14), so the bridge now
   turns the turret, waits for it, then calls `ChangeObjective`, and reports
   `arrived` once position and name both match. **Re-run step 5 with the new job.**
+- Steps 6-10 not run yet.
+
+## Results on the microscope (2026-10-15)
+
+- **Step 0 failed.** With the first design NIS did not respond while the job
+  ran. A JOBS Python task runs on NIS's main thread, and the serving loop
+  never returned. JOBS has no background option (the Python task has no
+  options besides its code; `ctx` is "currently not implemented"), and
+  NIS exposes no outside automation interface we could find, so the loop
+  cannot be moved out of NIS by configuration.
+- **Change:** `run()` now starts `serve()` on a worker thread and returns, so
+  the job finishes at once and NIS stays free. **Unverified:** whether NIS
+  macro calls work from a non-main thread. Re-run the plan from step 0, then
+  `status` (read-only), then the moves, and stop at the first odd result.
+  If calls fail or misbehave off the main thread, the fallback is a short job
+  that handles one queued request per run, started from a JOBS loop or timer.
+
+## Results on the microscope (2026-10-15, worker-thread bridge)
+
+- Step 0 passes: NIS stays responsive; the job window closes at once while
+  the bridge keeps serving on a worker thread. Reads work off the main thread.
+- Steps 1-4 pass: `move 100 0` and back (X 137.5 -> 237.5 -> 137.5), a
+  1500 um move refused, and the e-stop refused in both the client and, via
+  `curl`, the bridge. Moves from the worker thread work.
+- **Step 5 passes.** Turret turned 4x -> 10x -> 4x (nosepiece 0 -> 1 -> 0),
+  `arrived: true` each way. NIS's objective display is the blue text in the
+  bottom status bar and it follows: `PLAN APO lambdaD 4x OFN25 (8.67 um/px @ 512 x 512)`
+  and `PLAN APO lambdaD 10x OFN25 DIC N1 (1.72 um/px @ 512 x 512)`; the Ti2 Pad
+  highlights the matching nosepiece slot. **Open question:** 8.67 / 1.72 is
+  about 5x, not the 2.5x the magnifications imply. Probably the AX scan
+  field differs per objective, but check it with a capture at each.
 - Steps 6-10 not run yet.
 
 ## Safety rules (enforced in code)
