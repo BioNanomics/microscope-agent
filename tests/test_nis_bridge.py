@@ -288,7 +288,8 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
     from mcp.client.stdio import StdioServerParameters, stdio_client
 
     async def names():
-        env = dict(os.environ, CONFOCAL_NO_ESTOP_PANEL="1", CONFOCAL_MCP_DATA_DIR=str(tmp_path))
+        env = dict(os.environ, CONFOCAL_NO_ESTOP_PANEL="1", CONFOCAL_NO_NIS_MONITOR="1",
+                   CONFOCAL_MCP_DATA_DIR=str(tmp_path))
         params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server_nis"], env=env)
         async with Client(stdio_client(params)) as client:
             return {t.name for t in (await client.list_tools()).tools}
@@ -416,6 +417,7 @@ def test_monitor_opens_once_when_the_server_starts(monkeypatch):
     monkeypatch.setattr(monitor.subprocess, "Popen", lambda *a, **k: opened.append(a[0]))
     monkeypatch.delenv("CONFOCAL_NO_NIS_MONITOR", raising=False)
     monkeypatch.setattr(monitor, "monitor_running", lambda: False)
+    monkeypatch.setattr(monitor, "ON_WINDOWS", True)        # the launch is Windows-only; CI runs on Linux
     monitor.launch()
     assert opened and opened[0][-2:] == ["-m", "acquisition.nis_monitor"]
     opened.clear()

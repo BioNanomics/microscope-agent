@@ -36,6 +36,7 @@ import urllib.request
 from acquisition import estop, nis_events
 from acquisition.backends.nis_bridge import DEFAULT_URL
 
+ON_WINDOWS = sys.platform == "win32"
 MONITOR_MUTEX = r"Local\confocal-mcp-nis-monitor"
 STATUS_TIMEOUT_S = 2.0
 EVENTS_KEPT = 200
@@ -64,14 +65,14 @@ def launch() -> None:
     the server; failures go to stderr (stdout is the MCP JSON-RPC channel)
     and never stop the caller.
     """
-    if os.environ.get("CONFOCAL_NO_NIS_MONITOR") or sys.platform != "win32":
+    if os.environ.get("CONFOCAL_NO_NIS_MONITOR") or not ON_WINDOWS:
         return
     try:
         if monitor_running():
             return
         subprocess.Popen([sys.executable, "-m", "acquisition.nis_monitor"],
                          stdin=subprocess.DEVNULL, stdout=None, stderr=None,
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+                         creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     except Exception as exc:
         print(f"[nis_monitor] could not open the monitor window ({exc}). "
               f"Start it with: python -m acquisition.nis_monitor", file=sys.stderr)
