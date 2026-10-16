@@ -69,3 +69,10 @@ Repository = "https://github.com/BioNanomics/microscope-agent"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_server", "acquisition", "harness", "timelapse"]
+
+[tool.pytest.ini_options]
+# `python -m` entry points are exercised with runpy, which re-executes a module
+# that is already imported; that is intended and the warning is noise.
+filterwarnings = [
+    "ignore:.*found in sys.modules after import of package:RuntimeWarning",
+]
