@@ -52,6 +52,14 @@ class FakeMicroscope:
         self.objective = _Objective()
         self.iLIGHTPATH = 1
         self.iDIA_LAMP_Switch = 0
+        self.uiDataUsageMask = 2
+        self.commands = []
+
+    def DedicatedCommand(self, name, arg):
+        self.commands.append((name, arg))
+        if name.startswith("GET"):
+            raise RuntimeError("not supported")
+        return "ok"
 
     def Objective(self, n):
         return self.objective
@@ -68,12 +76,16 @@ def fake_ti2(monkeypatch):
     pythoncom = types.ModuleType("pythoncom")
     pythoncom.CoInitialize = lambda: None
     pythoncom.PumpWaitingMessages = lambda: None
+    pythoncom.CoInitializeEx = lambda flag: None
+    pythoncom.COINIT_MULTITHREADED = 0
     win32com = types.ModuleType("win32com")
     client = types.ModuleType("win32com.client")
-    client.Dispatch = lambda clsid: micro
+    client.Dispatch = lambda *a, **k: micro
+    client.DispatchWithEvents = lambda clsid, events: micro
     win32com.client = client
     nk = types.ModuleType("NkTi2Ax")
     nk.NikonTi2AxAutoConnectMicroscope = types.SimpleNamespace(CLSID="fake-clsid")
+    nk.INikonTi2AxData = object
     for name, mod in (("pythoncom", pythoncom), ("win32com", win32com),
                       ("win32com.client", client), ("NkTi2Ax", nk)):
         monkeypatch.setitem(sys.modules, name, mod)
