@@ -45,8 +45,8 @@ test = [
     "opencv-python-headless==5.0.0.93",
     # The analysis/ scripts' tests (worm survey) use these for real; the ND2
     # reader and ffmpeg are faked, so neither nd2 nor imageio-ffmpeg is needed.
-    "scipy==1.18.1",
-    "scikit-image==0.26.0",
+    "scipy>=1.11,<2"  # a range: 1.18.1 needs Python 3.12 and CI also runs 3.11,
+    "scikit-image>=0.24,<1",
 ]
 # The standalone Claude harness loops in harness/ (not the MCP server).
 harness = [
