@@ -25,7 +25,7 @@ jobs:
       # large untested addition.
       - run: >
           python -m pytest -v tests
-          --cov=acquisition --cov=harness --cov=mcp_server --cov=timelapse
+          --cov=acquisition --cov=harness --cov=mcp_server --cov=timelapse --cov=analysis
           --cov-report=term-missing --cov-fail-under=90
       # The MCP server must import on a core-only install (the camera and
       # SDK stacks are lazy imports) - fail the build if that regresses.

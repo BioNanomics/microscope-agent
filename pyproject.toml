@@ -43,6 +43,10 @@ test = [
     # Real OpenCV: mosaic.py and worm_follow.py run against a simulated scene.
     # Headless, so a CI runner needs no GL libraries.
     "opencv-python-headless==5.0.0.93",
+    # The analysis/ scripts' tests (worm survey) use these for real; the ND2
+    # reader and ffmpeg are faked, so neither nd2 nor imageio-ffmpeg is needed.
+    "scipy==1.18.1",
+    "scikit-image==0.26.0",
 ]
 # The standalone Claude harness loops in harness/ (not the MCP server).
 harness = [

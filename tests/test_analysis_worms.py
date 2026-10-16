@@ -153,13 +153,11 @@ def test_analyse_a_time_series_writes_images_and_tables(survey, tmp_path, capsys
 
 def test_analyse_a_single_image_reports_each_worm(monkeypatch, survey, tmp_path, capsys):
     install_nd2(monkeypatch, two_channel_stack(t=1), list("TZCYX"), ["TD", "RFP"], times=[0.0])
-    out = survey.analyse(PATH, "RFP", 150, 0.85)                    # default folder next to the file
-    try:
-        assert (out / "survey.png").exists() and not (out / "counts.csv").exists()
-        assert "head found" in capsys.readouterr().out and out.name == "scene_survey"
-    finally:
-        import shutil
-        shutil.rmtree(out, ignore_errors=True)
+    monkeypatch.chdir(tmp_path)                                     # the default folder is created next to the file
+    out = survey.analyse(PATH, "RFP", 150, 0.85)
+    assert (out / "survey.png").exists() and not (out / "counts.csv").exists()
+    assert "head found" in capsys.readouterr().out and out.name == "scene_survey"
+    assert out.resolve().parent == tmp_path.resolve()
 
 
 def test_analyse_with_no_worms_still_writes_a_table(monkeypatch, survey, tmp_path):
