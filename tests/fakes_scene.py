@@ -76,6 +76,7 @@ class RigCamera:
         self.exposure_us, self.settings_calls, self.closed = 1600.0, [], False
         self.captures = 0
         self.on_capture = None
+        self.blur_per_um = 1 / 8          # defocus blur; 0 makes every Z look alike
         self._acquirer = types.SimpleNamespace(
             remote_device=types.SimpleNamespace(node_map=RigNodeMap(white_balance, full_nodes)))
 
@@ -96,8 +97,8 @@ class RigCamera:
         y0 = int(np.clip(round(cy - self.h / 2), 0, WORLD - self.h))
         img = self.rig.world[y0:y0 + self.h, x0:x0 + self.w].copy()
         defocus = abs(st.z - Z_FOCUS)
-        if defocus > 2:
-            img = cv2.GaussianBlur(img, (0, 0), defocus / 8)
+        if defocus > 2 and self.blur_per_um:
+            img = cv2.GaussianBlur(img, (0, 0), defocus * self.blur_per_um)
         img = img * (self.exposure_us / 1600.0)
         return np.clip(img, 0, 255).astype(np.uint8)
 
