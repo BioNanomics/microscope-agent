@@ -111,6 +111,18 @@ def test_agent_run_turn_marks_failed_tools_as_errors():
     assert messages[2]["content"][0]["is_error"] is True
 
 
+def test_agent_run_turn_prunes_old_images(monkeypatch):
+    client = sync_client(*([[tool_use("get_image", {"backend": "mock", "max_dimension": 32}, f"t{i}")] for i in range(4)]
+                           + [[text("done")]]))
+    messages = [{"role": "user", "content": "shoot"}]
+    agent.run_turn(client, messages)
+    with_images = [m for m in messages if m["role"] == "user" and isinstance(m["content"], list)
+                   and any(b["type"] == "tool_result" and any(c["type"] == "image" for c in b["content"]) for b in m["content"])]
+    assert len(with_images) == agent.KEEP_LAST_N_IMAGES
+    first = messages[2]["content"][0]["content"]                       # an old frame: text survives, picture gone
+    assert [c["type"] for c in first] == ["text"] and "frame_id" in first[0]["text"]
+
+
 def test_agent_run_turn_stops_at_the_round_cap(monkeypatch, capsys):
     monkeypatch.setattr(agent, "MAX_TOOL_ROUNDS", 2)
     client = sync_client(*([[tool_use("get_pos", {}), text("still going")]] * 2))
