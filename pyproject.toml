@@ -39,6 +39,10 @@ sdk = [
 # Running the test suite (tests/ - mock backend only, no hardware).
 test = [
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    # Real OpenCV: mosaic.py and worm_follow.py run against a simulated scene.
+    # Headless, so a CI runner needs no GL libraries.
+    "opencv-python-headless==5.0.0.93",
 ]
 # The standalone Claude harness loops in harness/ (not the MCP server).
 harness = [

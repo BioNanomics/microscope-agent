@@ -20,7 +20,13 @@ jobs:
       # needed to import the Claude loops for the approval-gate tests (no
       # API key required - no model is ever called).
       - run: pip install -e ".[harness,test]"
-      - run: python -m pytest -v tests   # -v names each test in the log
+      # -v names each test in the log; the coverage table shows what no test
+      # reaches. The floor is a tripwire, not a target: it only catches a
+      # large untested addition.
+      - run: >
+          python -m pytest -v tests
+          --cov=acquisition --cov=harness --cov=mcp_server --cov=timelapse
+          --cov-report=term-missing --cov-fail-under=90
       # The MCP server must import on a core-only install (the camera and
       # SDK stacks are lazy imports) - fail the build if that regresses.
       # (tests/test_mcp_server.py goes further and actually runs it.)
