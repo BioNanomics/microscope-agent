@@ -8,13 +8,14 @@
 import asyncio
 import json
 import os
+import socket
 import sys
 import threading
 import urllib.request
 
 import pytest
 
-from acquisition import estop
+from acquisition import estop, nis_events, nis_monitor as monitor
 from acquisition.backends import nis_bridge as client_mod
 from acquisition.nis_bridge import bridge_job as bj
 from mcp_server import nis_tools
@@ -43,6 +44,9 @@ class FakeNIS:
         self.GetCurrentObjName = f("GetCurrentObjName", self._current)
         self.Stg_SetNosepiecePosition = f("Stg_SetNosepiecePosition", self._turn)
         self.ChangeObjective = f("ChangeObjective", self._change)
+        self.opt_confs = ["All Devices", "AX", "EPI"]
+        self.GetOptConfCount = f("GetOptConfCount", lambda: len(self.opt_confs))
+        self.GetOptConfName = f("GetOptConfName", self._conf_name)
         self.Capture = f("Capture", lambda: 1)
         self.ImageSaveAs = f("ImageSaveAs", self._save)
         self.CloseCurrentDocument = f("CloseCurrentDocument", lambda save: 1)
@@ -100,6 +104,10 @@ class FakeNIS:
 
     def _finish(self):
         self.nd_running = False
+        return 1
+
+    def _conf_name(self, i, buf, n):
+        buf.value = self.opt_confs[i] if 0 <= i < len(self.opt_confs) else ""
         return 1
 
     def moved(self):
@@ -280,14 +288,15 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
     from mcp.client.stdio import StdioServerParameters, stdio_client
 
     async def names():
-        env = dict(os.environ, CONFOCAL_NO_ESTOP_PANEL="1", CONFOCAL_MCP_DATA_DIR=str(tmp_path))
+        env = dict(os.environ, CONFOCAL_NO_ESTOP_PANEL="1", CONFOCAL_NO_NIS_MONITOR="1",
+                   CONFOCAL_MCP_DATA_DIR=str(tmp_path))
         params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server_nis"], env=env)
         async with Client(stdio_client(params)) as client:
             return {t.name for t in (await client.list_tools()).tools}
 
     assert asyncio.run(names()) == {"nis_status", "nis_move_relative", "nis_change_objective",
                                     "nis_capture", "nis_run_experiment", "nis_finish_experiment",
-                                    "estop"}
+                                    "nis_list_optical_configs", "estop"}
 
 
 def test_idle_bridge_stops_itself(estop_file):
@@ -321,3 +330,115 @@ def test_tool_raises_when_the_turret_does_not_arrive(bridge, monkeypatch):
     nis.Stg_SetNosepiecePosition = nis._fn("Stg_SetNosepiecePosition", lambda position: 1)
     with pytest.raises(RuntimeError, match='"arrived": false'):
         nis_tools.nis_change_objective("Plan Fluor 10x Ph1 DLL", confirm=True)
+
+
+# ---- event log and live monitor ---------------------------------------
+
+@pytest.fixture
+def events_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(nis_events, "events_dir", lambda: tmp_path / "events")
+    return nis_events.events_path()
+
+
+def test_actions_are_logged_start_then_outcome(bridge, events_log, estop_file):
+    nis, url, c = bridge
+    c.move_relative(100, 0)                       # ok
+    c.move_relative(5000, 0)                      # the bridge refuses the size: failed
+    estop_file.write_text("{}")
+    with pytest.raises(estop.EStopEngaged):
+        c.move_relative(10, 0)                    # refused by the client
+    c.nd_finish()                                 # allowed under e-stop
+    events, _ = nis_events.read_from(events_log)
+    assert [(e["action"], e["phase"]) for e in events] == [
+        ("move", "start"), ("move", "ok"), ("move", "start"), ("move", "failed"),
+        ("move", "start"), ("move", "refused"), ("nd_finish", "start"), ("nd_finish", "ok")]
+    assert events[1]["result"]["after_um"][0] == 200.0 and "elapsed_s" in events[1]
+    assert "cap" in nis_events.summarize(events[3]) or "refused" in nis_events.summarize(events[3])
+
+
+def test_status_reads_are_not_logged_and_unreachable_bridge_is_logged(events_log):
+    c = client_mod.NISBridge("http://127.0.0.1:9", timeout_s=1)
+    with pytest.raises(client_mod.BridgeUnavailable):
+        c.move_relative(1, 0)
+    events, _ = nis_events.read_from(events_log)
+    assert [(e["action"], e["phase"]) for e in events] == [("move", "start"), ("move", "error")]
+
+
+def test_log_tail_waits_for_a_complete_line(events_log):
+    nis_events.record("move", "start", params={"dx": 1})
+    events, offset = nis_events.read_from(events_log)
+    assert len(events) == 1
+    with events_log.open("a", encoding="utf-8") as f:
+        f.write('{"action": "move", "pha')          # a write in progress
+    assert nis_events.read_from(events_log, offset) == ([], offset)
+    with events_log.open("a", encoding="utf-8") as f:
+        f.write('se": "ok"}\n')
+    assert [e["phase"] for e in nis_events.read_from(events_log, offset)[0]] == ["ok"]
+
+
+def test_monitor_names_the_call_the_bridge_is_stuck_on(estop_file):
+    import datetime
+    now = datetime.datetime(2026, 10, 15, 14, 0, 42)
+    start = {"ts": "2026-10-15T14:00:00.000", "action": "nd_run", "phase": "start",
+             "params": {"experiment": "bridge test"}}
+    assert monitor.pending([start]) == start
+    assert monitor.pending([start, {**start, "phase": "ok"}]) is None
+    frame = monitor.render("busy", None, [start], "clear", now, colour=False)
+    assert "BUSY" in frame and "nd_run" in frame and "42 s so far" in frame
+    up = monitor.render("up", {"xy_um": [1.0, 2.0], "z_um": 3.0, "nosepiece_position": 0,
+                               "current_objective": "PLAN APO λD 4x OFN25", "nd_running": False},
+                        [], "clear", now, colour=False)
+    assert "XY 1.0, 2.0" in up and "4x OFN25" in up and "no NIS actions" in up
+
+
+def test_monitor_status_poll_tells_up_from_down(bridge):
+    nis, url, c = bridge
+    link, status = monitor.fetch_status(url)
+    assert link == "up" and status["xy_um"] == [100.0, 200.0]
+    with socket.socket() as s:                    # a port nothing listens on: refused at once
+        s.bind(("127.0.0.1", 0))
+        closed = s.getsockname()[1]
+    assert monitor.fetch_status(f"http://127.0.0.1:{closed}")[0] == "down"
+
+
+def test_monitor_says_busy_when_the_bridge_connects_but_does_not_answer():
+    with socket.socket() as s:                    # accepts connections, never replies
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        old, monitor.STATUS_TIMEOUT_S = monitor.STATUS_TIMEOUT_S, 0.5
+        try:
+            assert monitor.fetch_status(f"http://127.0.0.1:{s.getsockname()[1]}")[0] == "busy"
+        finally:
+            monitor.STATUS_TIMEOUT_S = old
+
+
+def test_monitor_opens_once_when_the_server_starts(monkeypatch):
+    opened = []
+    monkeypatch.setattr(monitor.subprocess, "Popen", lambda *a, **k: opened.append(a[0]))
+    monkeypatch.delenv("CONFOCAL_NO_NIS_MONITOR", raising=False)
+    monkeypatch.setattr(monitor, "monitor_running", lambda: False)
+    monkeypatch.setattr(monitor, "ON_WINDOWS", True)        # the launch is Windows-only; CI runs on Linux
+    monitor.launch()
+    assert opened and opened[0][-2:] == ["-m", "acquisition.nis_monitor"]
+    opened.clear()
+    monkeypatch.setattr(monitor, "monitor_running", lambda: True)       # already on screen
+    monitor.launch()
+    monkeypatch.setattr(monitor, "monitor_running", lambda: False)
+    monkeypatch.setenv("CONFOCAL_NO_NIS_MONITOR", "1")                  # switched off
+    monitor.launch()
+    assert opened == []
+
+
+def test_optical_configs_can_be_listed_but_not_selected(bridge):
+    nis, url, c = bridge
+    assert c.optical_configs()["optical_configs"] == ["All Devices", "AX", "EPI"]
+    assert nis_tools.nis_list_optical_configs()["optical_configs"] == ["All Devices", "AX", "EPI"]
+    code, out = raw(url, "POST", "/optconf", {"name": "AX"})      # selecting froze NIS: no route
+    assert code == 404 and nis.moved() == []
+
+
+def test_a_second_bridge_cannot_share_the_port(bridge):
+    nis, url, c = bridge
+    port = int(url.rsplit(":", 1)[1])
+    with pytest.raises(OSError):
+        bj.serve(bj.Bridge(bj.Macro(FakeNIS())), port=port)

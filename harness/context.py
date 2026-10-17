@@ -26,27 +26,49 @@ from typing import Any
 IMAGE_BLOCK_TYPES = {"image", "image_url"}
 
 
+def _is_image(block: Any) -> bool:
+    return isinstance(block, dict) and block.get("type") in IMAGE_BLOCK_TYPES
+
+
+def _block_has_image(block: Any) -> bool:
+    """An image block, or a tool_result whose own content holds one. The
+    harnesses return get_image()'s picture inside a tool_result, so looking
+    only at top-level blocks would never find a single frame."""
+    if _is_image(block):
+        return True
+    return (isinstance(block, dict) and block.get("type") == "tool_result"
+            and isinstance(block.get("content"), list)
+            and any(_is_image(inner) for inner in block["content"]))
+
+
 def _message_has_image(message: dict[str, Any]) -> bool:
     content = message.get("content")
     if not isinstance(content, list):
         return False
-    return any(
-        isinstance(block, dict) and block.get("type") in IMAGE_BLOCK_TYPES
-        for block in content
-    )
+    return any(_block_has_image(block) for block in content)
+
+
+def _strip_block(block: Any) -> Any:
+    """`block` without images; a tool_result is copied with its images
+    removed, and says so if nothing else was left in it."""
+    if not (isinstance(block, dict) and block.get("type") == "tool_result"
+            and isinstance(block.get("content"), list)):
+        return block
+    inner = [b for b in block["content"] if not _is_image(b)]
+    if not inner:
+        inner = [{"type": "text", "text": "[image removed to save context]"}]
+    return {**block, "content": inner}
 
 
 def _strip_images(message: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of `message` with any image blocks removed from its
-    content, keeping every other block (text, tool-use, etc.) as-is.
+    content - top-level, or inside a tool_result - keeping every other block
+    (text, tool-use, etc.) as-is.
     """
     content = message.get("content")
     if not isinstance(content, list):
         return dict(message)
-    kept = [
-        block for block in content
-        if not (isinstance(block, dict) and block.get("type") in IMAGE_BLOCK_TYPES)
-    ]
+    kept = [_strip_block(block) for block in content if not _is_image(block)]
     return {**message, "content": kept}
 
 

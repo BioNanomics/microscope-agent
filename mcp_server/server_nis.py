@@ -14,7 +14,7 @@
 
 from mcp.server.mcpserver import MCPServer
 
-from acquisition import estop
+from acquisition import estop, nis_monitor
 from mcp_server import loop_tools, nis_tools
 
 mcp = MCPServer("ConfocalOrchestrator-NIS")
@@ -22,6 +22,7 @@ mcp = MCPServer("ConfocalOrchestrator-NIS")
 mcp.add_tool(nis_tools.nis_status)
 mcp.add_tool(nis_tools.nis_move_relative)
 mcp.add_tool(nis_tools.nis_change_objective)
+mcp.add_tool(nis_tools.nis_list_optical_configs)
 mcp.add_tool(nis_tools.nis_capture)
 mcp.add_tool(nis_tools.nis_run_experiment)
 mcp.add_tool(nis_tools.nis_finish_experiment)
@@ -31,6 +32,7 @@ mcp.add_tool(loop_tools.estop)          # the same e-stop, reachable from this s
 def main() -> None:
     """Console entry point (``confocal-mcp-nis``): serve the NIS tools over stdio."""
     estop.launch_panel()
+    nis_monitor.launch()            # live view of what this server does
     mcp.run(transport="stdio")
 
 

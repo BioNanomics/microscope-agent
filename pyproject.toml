@@ -39,6 +39,15 @@ sdk = [
 # Running the test suite (tests/ - mock backend only, no hardware).
 test = [
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    # Real OpenCV: mosaic.py and worm_follow.py run against a simulated scene.
+    # Headless, so a CI runner needs no GL libraries.
+    "opencv-python-headless==5.0.0.93",
+    # The analysis/ scripts' tests (worm survey) use these for real; the ND2
+    # reader and ffmpeg are faked, so neither nd2 nor imageio-ffmpeg is needed.
+    # Ranges: scipy 1.18.1 needs Python 3.12 and CI also runs 3.11.
+    "scipy>=1.11,<2",
+    "scikit-image>=0.24,<1",
 ]
 # The standalone Claude harness loops in harness/ (not the MCP server).
 harness = [
@@ -69,3 +78,10 @@ Repository = "https://github.com/BioNanomics/microscope-agent"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_server", "acquisition", "harness", "timelapse"]
+
+[tool.pytest.ini_options]
+# `python -m` entry points are exercised with runpy, which re-executes a module
+# that is already imported; that is intended and the warning is noise.
+filterwarnings = [
+    "ignore:.*found in sys.modules after import of package:RuntimeWarning",
+]
