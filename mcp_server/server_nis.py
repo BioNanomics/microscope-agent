@@ -23,9 +23,8 @@ mcp.add_tool(nis_tools.nis_status)
 mcp.add_tool(nis_tools.nis_move_relative)
 mcp.add_tool(nis_tools.nis_change_objective)
 mcp.add_tool(nis_tools.nis_list_optical_configs)
-mcp.add_tool(nis_tools.nis_capture)
-mcp.add_tool(nis_tools.nis_run_experiment)
-mcp.add_tool(nis_tools.nis_finish_experiment)
+# nis_capture / nis_run_experiment / nis_finish_experiment stay out until the bridge can
+# run them on NIS's main thread (they crashed NIS from the worker thread, 2026-10-16).
 mcp.add_tool(loop_tools.estop)          # the same e-stop, reachable from this server too
 
 

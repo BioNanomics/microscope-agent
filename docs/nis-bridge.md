@@ -6,7 +6,7 @@ NIS-Elements can do, above all the AX confocal lasers and the ND
 experiments set up in its ND Acquisition window. The NIS bridge makes
 those available to our code and to an MCP client.
 
-**Status: built and tested off the microscope, not yet run inside NIS.**
+**Status: status, XY moves and objective changes work on the scope. Capture and ND runs are disabled (they crash NIS, 2026-10-16).**
 The test plan below is what still has to pass on the scope. Driving
 capture through NIS reverses an earlier team decision (see the header of
 `mcp_server/loop_tools.py`), so it also needs sign-off before it is used
@@ -138,6 +138,21 @@ before changing anything.
   about 5x, not the 2.5x the magnifications imply. Probably the AX scan
   field differs per objective, but check it with a capture at each.
 - Steps 6-10 not run yet.
+
+## Results on the microscope (2026-10-16): capture crashes NIS
+
+- Step 6 (`capture`) killed NIS: `nis_ar.exe` faulted in `Qt5Core.dll`
+  (exception 0xc0000409) at the moment of the call. `Capture`,
+  `ImageSaveAs` and `CloseCurrentDocument` open and close NIS windows, which
+  Qt only allows on the UI thread. No file was saved. Reads, moves and
+  objective changes from the worker thread are fine.
+- **Decision (keep it simple):** the bridge does status, XY moves and
+  objective changes only. `/capture`, `/nd/run` and `/nd/finish` now answer
+  "disabled" (`UI_CALLS_ENABLED = False` in `bridge_job.py`) and the three MCP
+  tools are not registered. Capture and ND runs are started by hand in NIS;
+  Claude then reads the saved `.nd2`. Steps 6-10 are therefore not run.
+- To bring them back, they would have to run on NIS's main thread (a short
+  JOBS job that takes one queued request per run). Not planned.
 
 ## Safety rules (enforced in code)
 

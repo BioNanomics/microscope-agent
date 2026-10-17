@@ -72,6 +72,11 @@ PORT = 8766                     # 8765 is the plain port probe (nis_port_probe.p
 VERSION = 1
 MAX_STEP_UM = 1000.0
 ALLOWED_MAGNIFICATIONS = (4, 10)
+# Capture, ImageSaveAs, CloseCurrentDocument and the ND calls open or close
+# NIS windows. Called from the worker thread they crashed nis_ar.exe
+# (Qt5Core.dll, 0xc0000409, 2026-10-16). Off until they run on NIS's main
+# thread: capture and ND runs are started by hand in NIS meanwhile.
+UI_CALLS_ENABLED = False
 # "4x" / "10x" as a whole magnification - not the 4x inside "14x" or "40x"
 _MAG = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[xX](?![a-zA-Z0-9])")
 ESTOP = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
@@ -213,7 +218,15 @@ class Bridge:
     # until the bridge was shut down (2026-10-15). Set the optical
     # configuration in NIS, or find a way to run it on the UI thread first.
 
+    def _refuse_ui_call(self, what: str) -> dict | None:
+        if not UI_CALLS_ENABLED:
+            return {"error": f"{what} is disabled: it crashes NIS when called from the bridge's "
+                             "worker thread. Start it in NIS itself."}
+        return None
+
     def capture(self, path: str) -> dict:
+        if (r := self._refuse_ui_call("capture")):
+            return r
         if (r := self._refuse_if_stopped("capture")):
             return r
         if not path.lower().endswith(".nd2"):
@@ -227,6 +240,8 @@ class Bridge:
                 "path": path, "saved": os.path.exists(path)}
 
     def nd_run(self, experiment: str) -> dict:
+        if (r := self._refuse_ui_call("ND run")):
+            return r
         if (r := self._refuse_if_stopped("ND run")):
             return r
         if self.m.ND_IsInExperimentCapture():
@@ -242,6 +257,8 @@ class Bridge:
 
     def nd_finish(self) -> dict:
         # Always allowed, e-stop or not: it only ends a run early.
+        if (r := self._refuse_ui_call("ND finish")):
+            return r
         rc = self.m.ND_FinishExperiment()
         return {"rc": rc, "nd_running": bool(self.m.ND_IsInExperimentCapture())}
 

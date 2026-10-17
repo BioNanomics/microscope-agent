@@ -125,6 +125,7 @@ def estop_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def bridge(estop_file, monkeypatch):
+    monkeypatch.setattr(bj, "UI_CALLS_ENABLED", True)    # the plumbing is tested; the real default is off
     nis = FakeNIS()
     stop, ready, port = threading.Event(), threading.Event(), []
     t = threading.Thread(target=bj.serve, args=(bj.Bridge(bj.Macro(nis)),),
@@ -295,7 +296,6 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
             return {t.name for t in (await client.list_tools()).tools}
 
     assert asyncio.run(names()) == {"nis_status", "nis_move_relative", "nis_change_objective",
-                                    "nis_capture", "nis_run_experiment", "nis_finish_experiment",
                                     "nis_list_optical_configs", "estop"}
 
 
@@ -442,3 +442,13 @@ def test_a_second_bridge_cannot_share_the_port(bridge):
     port = int(url.rsplit(":", 1)[1])
     with pytest.raises(OSError):
         bj.serve(bj.Bridge(bj.Macro(FakeNIS())), port=port)
+
+
+def test_ui_calls_are_off_by_default(estop_file):
+    assert bj.UI_CALLS_ENABLED is False
+    nis = FakeNIS()
+    b = bj.Bridge(bj.Macro(nis))
+    assert "disabled" in b.capture("x.nd2")["error"]
+    assert "disabled" in b.nd_run("exp")["error"]
+    assert "disabled" in b.nd_finish()["error"]
+    assert not nis.calls
