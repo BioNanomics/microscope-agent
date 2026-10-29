@@ -62,8 +62,8 @@ def test_the_nis_server_registers_the_nis_tools_in_process():
     import asyncio
     from mcp_server import server_nis
     names = {t.name for t in asyncio.run(server_nis.mcp.list_tools())}
-    assert names == {"nis_status", "nis_move_relative", "nis_change_objective",
-                     "nis_list_optical_configs", "estop"}
+    assert names == {"nis_status", "nis_move_relative", "nis_change_objective", "nis_capture",
+                     "nis_run_experiment", "nis_finish_experiment", "nis_list_optical_configs", "estop"}
 
 
 def test_package_version_falls_back_when_not_installed(monkeypatch):

@@ -6,7 +6,7 @@ NIS-Elements can do, above all the AX confocal lasers and the ND
 experiments set up in its ND Acquisition window. The NIS bridge makes
 those available to our code and to an MCP client.
 
-**Status: status, XY moves and objective changes work on the scope. Capture and ND runs are disabled (they crash NIS, 2026-10-16).**
+**Status: status, XY moves and objective changes work on the scope. Capture and ND runs now run on NIS's main thread (a Win32 timer hooked in `run()`); this is untested on the scope. Run step 6 first.**
 The test plan below is what still has to pass on the scope. Driving
 capture through NIS reverses an earlier team decision (see the header of
 `mcp_server/loop_tools.py`), so it also needs sign-off before it is used
@@ -146,13 +146,20 @@ before changing anything.
   `ImageSaveAs` and `CloseCurrentDocument` open and close NIS windows, which
   Qt only allows on the UI thread. No file was saved. Reads, moves and
   objective changes from the worker thread are fine.
-- **Decision (keep it simple):** the bridge does status, XY moves and
-  objective changes only. `/capture`, `/nd/run` and `/nd/finish` now answer
-  "disabled" (`UI_CALLS_ENABLED = False` in `bridge_job.py`) and the three MCP
-  tools are not registered. Capture and ND runs are started by hand in NIS;
-  Claude then reads the saved `.nd2`. Steps 6-10 are therefore not run.
-- To bring them back, they would have to run on NIS's main thread (a short
-  JOBS job that takes one queued request per run). Not planned.
+- **Fix (untested on the scope):** `run()` executes on NIS's main thread, so it
+  registers a Win32 thread timer there (`MainThread.install()` in
+  `bridge_job.py`). NIS's own message loop calls the timer every 50 ms, and
+  the callback runs the queued `Capture`/`ImageSaveAs`/`CloseCurrentDocument`
+  and ND calls on the UI thread. Status, moves and objective changes stay on
+  the worker thread. A queued call that the main thread has not started
+  within 10 min is cancelled, not run late, and the e-stop is checked again
+  on the main thread just before the call starts.
+- **To verify:** step 6 (`capture`) first. If NIS still faults, or the timer
+  never fires (the call reports "did not run"), the hook is wrong and the
+  calls stay refused until it is fixed. If `Capture` blocks NIS's UI for the
+  exposure, that is expected. Steps 7-10 (ND) follow only after step 6 passes.
+- The bridge job prints "no main-thread hook" and refuses these calls if the
+  timer cannot be registered.
 
 ## Safety rules (enforced in code)
 

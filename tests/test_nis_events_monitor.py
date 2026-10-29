@@ -29,13 +29,17 @@ def test_run_returns_at_once_and_serves_from_a_worker_thread(monkeypatch):
         release.wait(5)
 
     monkeypatch.setattr(bj, "Macro", lambda: "macro")
-    monkeypatch.setattr(bj, "Bridge", lambda m: ("bridge", m))
+    hooked = []
+    monkeypatch.setattr(bj, "MainThread", lambda: type("UI", (), {"install": lambda self: hooked.append(
+        threading.current_thread())})())
+    monkeypatch.setattr(bj, "Bridge", lambda m, ui: ("bridge", m))
     monkeypatch.setattr(bj, "serve", fake_serve)
     bj.run((), None, None, None)               # returns although fake_serve is still going
     assert started.wait(5)
     assert seen["thread"] is not threading.main_thread()
     assert seen["thread"].daemon and seen["thread"].name == "nis-bridge"
     assert seen["bridge"] == ("bridge", "macro")
+    assert hooked == [threading.current_thread()]      # the main-thread hook is installed from run()'s thread
     release.set()
 
 

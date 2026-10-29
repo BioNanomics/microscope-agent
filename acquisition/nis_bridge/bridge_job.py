@@ -72,11 +72,8 @@ PORT = 8766                     # 8765 is the plain port probe (nis_port_probe.p
 VERSION = 1
 MAX_STEP_UM = 1000.0
 ALLOWED_MAGNIFICATIONS = (4, 10)
-# Capture, ImageSaveAs, CloseCurrentDocument and the ND calls open or close
-# NIS windows. Called from the worker thread they crashed nis_ar.exe
-# (Qt5Core.dll, 0xc0000409, 2026-10-16). Off until they run on NIS's main
-# thread: capture and ND runs are started by hand in NIS meanwhile.
-UI_CALLS_ENABLED = False
+UI_TICK_MS = 50                 # how often NIS's main thread looks for queued UI calls
+UI_CALL_TIMEOUT_S = 600.0       # give up waiting for the main thread after this long
 # "4x" / "10x" as a whole magnification - not the 4x inside "14x" or "40x"
 _MAG = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[xX](?![a-zA-Z0-9])")
 ESTOP = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
@@ -131,11 +128,76 @@ def _estop_engaged() -> bool:
         return True             # cannot tell -> treat as engaged, like estop.py
 
 
+class MainThread:
+    """Runs calls on NIS's main (UI) thread.
+
+    Capture, ImageSaveAs, CloseCurrentDocument and the ND calls open or close
+    NIS windows. Called from the worker thread they crashed nis_ar.exe
+    (Qt5Core.dll, 0xc0000409, 2026-10-16). run() is the one place our code
+    is on the main thread, so it calls install(), which registers a Win32
+    thread timer there. NIS's own message loop then calls _tick on the main
+    thread every UI_TICK_MS, and _tick runs what the worker queued with
+    call(). If install() was never called, call() refuses.
+    """
+
+    def __init__(self, tick_ms: int = UI_TICK_MS):
+        self.tick_ms = tick_ms
+        self.installed = False
+        self._jobs = queue.Queue()
+        self._busy = False              # a call is running: do not re-enter from a nested message loop
+        self._timer_proc = None         # keep the ctypes callback alive
+        self.main_thread_id = None
+
+    def install(self) -> None:
+        """Call from the main thread only (JOBS run())."""
+        from ctypes import wintypes
+        user32 = ct.windll.user32
+        proc_type = ct.WINFUNCTYPE(None, wintypes.HWND, wintypes.UINT, ct.c_size_t, wintypes.DWORD)
+        self._timer_proc = proc_type(lambda hwnd, msg, tid, tick: self._tick())
+        user32.SetTimer.argtypes = [wintypes.HWND, ct.c_size_t, wintypes.UINT, proc_type]
+        user32.SetTimer.restype = ct.c_size_t
+        if not user32.SetTimer(None, 0, self.tick_ms, self._timer_proc):
+            raise OSError("SetTimer failed")
+        self.main_thread_id = threading.get_ident()
+        self.installed = True
+
+    def _tick(self) -> None:
+        if self._busy:
+            return
+        self._busy = True
+        try:
+            while True:
+                try:
+                    fn, box, cancelled = self._jobs.get_nowait()
+                except queue.Empty:
+                    return
+                if cancelled.is_set():          # the caller timed out: do not start it late
+                    continue
+                try:
+                    box.put(fn())
+                except Exception as e:
+                    box.put({"error": f"{type(e).__name__}: {e}"})
+        finally:
+            self._busy = False
+
+    def call(self, fn, timeout_s: float = UI_CALL_TIMEOUT_S) -> dict:
+        if not self.installed:
+            return {"error": "no NIS main-thread hook: this call crashes NIS from the worker thread"}
+        box, cancelled = queue.Queue(), threading.Event()
+        self._jobs.put((fn, box, cancelled))
+        try:
+            return box.get(timeout=timeout_s)
+        except queue.Empty:
+            cancelled.set()
+            return {"error": f"NIS's main thread did not run the call within {timeout_s:.0f} s"}
+
+
 class Bridge:
     """The operations, as plain methods returning JSON-able dicts."""
 
-    def __init__(self, macro: Macro):
+    def __init__(self, macro: Macro, ui: MainThread | None = None):
         self.m = macro
+        self.ui = ui or MainThread()        # not installed: UI calls are refused
 
     def status(self) -> dict:
         x, y, z = ct.c_double(), ct.c_double(), ct.c_double()
@@ -218,49 +280,49 @@ class Bridge:
     # until the bridge was shut down (2026-10-15). Set the optical
     # configuration in NIS, or find a way to run it on the UI thread first.
 
-    def _refuse_ui_call(self, what: str) -> dict | None:
-        if not UI_CALLS_ENABLED:
-            return {"error": f"{what} is disabled: it crashes NIS when called from the bridge's "
-                             "worker thread. Start it in NIS itself."}
-        return None
-
     def capture(self, path: str) -> dict:
-        if (r := self._refuse_ui_call("capture")):
-            return r
         if (r := self._refuse_if_stopped("capture")):
             return r
         if not path.lower().endswith(".nd2"):
             return {"error": "path must end in .nd2"}
         if os.path.exists(path):
             return {"error": f"{path} already exists - refusing to overwrite"}
-        rc_cap = self.m.Capture()
-        rc_save = self.m.ImageSaveAs(path, ND2_ALL_LAYERS, 0)
-        rc_close = self.m.CloseCurrentDocument(QUERYSAVE_NO)
-        return {"rc_capture": rc_cap, "rc_save": rc_save, "rc_close": rc_close,
-                "path": path, "saved": os.path.exists(path)}
+
+        def on_main_thread() -> dict:
+            if _estop_engaged():                # re-check: the call may have waited in the queue
+                return {"error": "e-stop engaged - capture refused", "estop_engaged": True}
+            rc_cap = self.m.Capture()
+            rc_save = self.m.ImageSaveAs(path, ND2_ALL_LAYERS, 0)
+            rc_close = self.m.CloseCurrentDocument(QUERYSAVE_NO)
+            return {"rc_capture": rc_cap, "rc_save": rc_save, "rc_close": rc_close,
+                    "path": path, "saved": os.path.exists(path)}
+        return self.ui.call(on_main_thread)
 
     def nd_run(self, experiment: str) -> dict:
-        if (r := self._refuse_ui_call("ND run")):
-            return r
         if (r := self._refuse_if_stopped("ND run")):
             return r
-        if self.m.ND_IsInExperimentCapture():
-            return {"error": "an ND experiment is already running"}
-        rc_load = self.m.ND_LoadExperiment(experiment)
-        if rc_load != 1:
-            return {"error": f"ND_LoadExperiment({experiment!r}) returned {rc_load}", "rc_load": rc_load}
-        t0 = time.time()
-        rc_run = self.m.ND_RunExperiment(0)          # 0: save to disk, do not open
-        return {"rc_load": rc_load, "rc_run": rc_run,
-                "call_returned_after_s": round(time.time() - t0, 1),
-                "nd_running": bool(self.m.ND_IsInExperimentCapture())}
+
+        def on_main_thread() -> dict:
+            if _estop_engaged():
+                return {"error": "e-stop engaged - ND run refused", "estop_engaged": True}
+            if self.m.ND_IsInExperimentCapture():
+                return {"error": "an ND experiment is already running"}
+            rc_load = self.m.ND_LoadExperiment(experiment)
+            if rc_load != 1:
+                return {"error": f"ND_LoadExperiment({experiment!r}) returned {rc_load}", "rc_load": rc_load}
+            t0 = time.time()
+            rc_run = self.m.ND_RunExperiment(0)          # 0: save to disk, do not open
+            return {"rc_load": rc_load, "rc_run": rc_run,
+                    "call_returned_after_s": round(time.time() - t0, 1),
+                    "nd_running": bool(self.m.ND_IsInExperimentCapture())}
+        return self.ui.call(on_main_thread)
 
     def nd_finish(self) -> dict:
         # Always allowed, e-stop or not: it only ends a run early.
-        if (r := self._refuse_ui_call("ND finish")):
-            return r
-        rc = self.m.ND_FinishExperiment()
-        return {"rc": rc, "nd_running": bool(self.m.ND_IsInExperimentCapture())}
+        def on_main_thread() -> dict:
+            rc = self.m.ND_FinishExperiment()
+            return {"rc": rc, "nd_running": bool(self.m.ND_IsInExperimentCapture())}
+        return self.ui.call(on_main_thread)
 
 
 # Routes: (method, path) -> function(bridge, body) -> dict
@@ -367,5 +429,10 @@ def run(imgs: "tuple[limjob.Image]", Job: "limjob.JobParam", macro: "limjob.Macr
     NIS macro calls work from a non-main thread is UNVERIFIED: try status
     first, then the moves. The hints are the JOBS template's own, as strings
     so this file imports off NIS."""
-    threading.Thread(target=serve, args=(Bridge(Macro()),), name="nis-bridge",
+    ui = MainThread()
+    try:
+        ui.install()                # run() is on NIS's main thread: hook it for UI calls
+    except Exception as e:
+        print(f"NIS bridge: no main-thread hook ({type(e).__name__}: {e}); capture and ND calls refused")
+    threading.Thread(target=serve, args=(Bridge(Macro(), ui),), name="nis-bridge",
                      daemon=True).start()

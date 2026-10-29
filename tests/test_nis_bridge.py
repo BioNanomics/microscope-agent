@@ -11,6 +11,7 @@ import os
 import socket
 import sys
 import threading
+import time
 import urllib.request
 
 import pytest
@@ -33,6 +34,7 @@ class FakeNIS:
         self.nd_running = False
         self.load_rc = 1
         self.calls = []
+        self.threads = {}               # call name -> id of the thread that made it
         self.last_saved = None
         f = self._fn
         self.StgGetPosXY = f("StgGetPosXY", lambda px, py: self._set(px, self.x, py, self.y))
@@ -58,6 +60,7 @@ class FakeNIS:
     def _fn(self, name, impl):
         def call(*args):
             self.calls.append(name)
+            self.threads[name] = threading.get_ident()
             return impl(*args)
         return call
 
@@ -123,12 +126,33 @@ def estop_file(tmp_path, monkeypatch):
     return path
 
 
+class FakeMainThread(bj.MainThread):
+    """Plays NIS's message loop: one thread that calls _tick, as the Win32 timer does."""
+
+    def __init__(self):
+        super().__init__(tick_ms=5)
+        self.installed = True
+        self._stop = threading.Event()
+        self.thread = threading.Thread(target=self._pump, daemon=True)
+        self.thread.start()
+        self.main_thread_id = self.thread.ident
+
+    def _pump(self):
+        while not self._stop.is_set():
+            self._tick()
+            time.sleep(0.005)
+
+    def close(self):
+        self._stop.set()
+        self.thread.join(5)
+
+
 @pytest.fixture
 def bridge(estop_file, monkeypatch):
-    monkeypatch.setattr(bj, "UI_CALLS_ENABLED", True)    # the plumbing is tested; the real default is off
     nis = FakeNIS()
+    ui = FakeMainThread()
     stop, ready, port = threading.Event(), threading.Event(), []
-    t = threading.Thread(target=bj.serve, args=(bj.Bridge(bj.Macro(nis)),),
+    t = threading.Thread(target=bj.serve, args=(bj.Bridge(bj.Macro(nis), ui),),
                          kwargs=dict(port=0, stop=stop,
                                      on_ready=lambda p: (port.append(p), ready.set())),
                          daemon=True)
@@ -136,9 +160,11 @@ def bridge(estop_file, monkeypatch):
     assert ready.wait(5)
     url = f"http://127.0.0.1:{port[0]}"
     monkeypatch.setenv("CONFOCAL_NIS_BRIDGE_URL", url)
+    nis.ui = ui
     yield nis, url, client_mod.NISBridge(url)
     stop.set()
     t.join(5)
+    ui.close()
 
 
 def raw(url, method, path, body=None):
@@ -237,6 +263,7 @@ def test_capture_saves_nd2_and_never_overwrites(bridge, tmp_path):
     target = tmp_path / "check.nd2"
     r = c.capture(str(target))
     assert r["saved"] is True and nis.last_saved == str(target)
+    assert nis.threads["Capture"] == nis.threads["ImageSaveAs"] == nis.ui.thread.ident
     assert "already exists" in c.capture(str(target))["error"]
     assert "nd2" in c.capture(str(tmp_path / "x.tif"))["error"]
 
@@ -296,6 +323,7 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
             return {t.name for t in (await client.list_tools()).tools}
 
     assert asyncio.run(names()) == {"nis_status", "nis_move_relative", "nis_change_objective",
+                                    "nis_capture", "nis_run_experiment", "nis_finish_experiment",
                                     "nis_list_optical_configs", "estop"}
 
 
@@ -444,11 +472,46 @@ def test_a_second_bridge_cannot_share_the_port(bridge):
         bj.serve(bj.Bridge(bj.Macro(FakeNIS())), port=port)
 
 
-def test_ui_calls_are_off_by_default(estop_file):
-    assert bj.UI_CALLS_ENABLED is False
+def test_ui_calls_run_on_the_main_thread_and_moves_do_not(bridge):
+    nis, url, c = bridge
+    c.move_relative(10, 0)
+    c.nd_run("exp")
+    c.nd_finish()
+    worker = nis.threads["StgMoveXY"]
+    assert worker != nis.ui.thread.ident
+    for name in ("ND_LoadExperiment", "ND_RunExperiment", "ND_FinishExperiment"):
+        assert nis.threads[name] == nis.ui.thread.ident
+
+
+def test_ui_calls_are_refused_when_the_main_thread_is_not_hooked(estop_file):
     nis = FakeNIS()
-    b = bj.Bridge(bj.Macro(nis))
-    assert "disabled" in b.capture("x.nd2")["error"]
-    assert "disabled" in b.nd_run("exp")["error"]
-    assert "disabled" in b.nd_finish()["error"]
+    b = bj.Bridge(bj.Macro(nis))                    # MainThread never installed
+    assert "main-thread hook" in b.capture("x.nd2")["error"]
+    assert "main-thread hook" in b.nd_run("exp")["error"]
+    assert "main-thread hook" in b.nd_finish()["error"]
     assert not nis.calls
+
+
+def test_a_call_the_main_thread_never_ran_is_cancelled_not_run_late(estop_file):
+    ui = bj.MainThread()
+    ui.installed = True                             # hooked, but nothing pumps it
+    ran = []
+    r = ui.call(lambda: ran.append(1) or {}, timeout_s=0.05)
+    assert "did not run" in r["error"]
+    ui._tick()                                      # the pump finally wakes up
+    assert not ran
+
+
+def test_estop_pressed_while_a_capture_waits_stops_it(estop_file):
+    nis = FakeNIS()
+    ui = bj.MainThread()
+    ui.installed = True
+    b = bj.Bridge(bj.Macro(nis), ui)
+    box = []
+    t = threading.Thread(target=lambda: box.append(b.capture("y.nd2")), daemon=True)
+    t.start()
+    time.sleep(0.1)                                 # queued, not yet run
+    estop_file.write_text("x")
+    ui._tick()
+    t.join(5)
+    assert box[0]["estop_engaged"] is True and "Capture" not in nis.calls
