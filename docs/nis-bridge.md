@@ -6,7 +6,7 @@ NIS-Elements can do, above all the AX confocal lasers and the ND
 experiments set up in its ND Acquisition window. The NIS bridge makes
 those available to our code and to an MCP client.
 
-**Status: status, XY moves and objective changes work on the scope. Capture and ND runs now run on NIS's main thread (a Win32 timer hooked in `run()`); this is untested on the scope. Run step 6 first.**
+**Status: status, optical-config listing, XY moves, objective changes and capture work on the scope (2026-10-29). Capture runs on NIS's main thread and NIS no longer crashes. ND runs (steps 7-9) are not yet tested.**
 The test plan below is what still has to pass on the scope. Driving
 capture through NIS reverses an earlier team decision (see the header of
 `mcp_server/baumer_ti2/baumer_ti2_tools.py`), so it also needs sign-off before it is used
@@ -160,6 +160,37 @@ before changing anything.
   exposure, that is expected. Steps 7-10 (ND) follow only after step 6 passes.
 - The bridge job prints "no main-thread hook" and refuses these calls if the
   timer cannot be registered.
+
+## Results on the microscope (2026-10-29): main-thread hook
+
+Bridge job pasted fresh into NIS (JOBS job `NISMCPTest`); its log showed
+`NIS bridge v1 listening on 127.0.0.1:8766, pid 28168` and no "no
+main-thread hook" warning. Calls went through the MCP tool functions in
+`mcp_server/nis/nis_tools.py`, in-process, with `confirm=True` where needed.
+Checks on the NIS screen were made by the operator.
+
+| Step | Call | Time | Result | Evidence |
+|---|---|---|---|---|
+| 1 | `nis_status` | 18:15:39 | **pass** | XY (0, 0), Z 3594.22 and the 20x matched NIS; turret 0-based (0 = 4x … 5 = S Plan Fluor 20xC) |
+| - | `nis_list_optical_configs` | 18:16:59 | **pass** | 14 configs, same as NIS's saved list |
+| 2 | `nis_move_relative(100, 0)`, `(-100, 0)` | 20:20:41, 20:21:21 | **pass** | Repeated with a pause: NIS showed X 0.100 mm, then 0.000 mm; Y unchanged. Event log `move ok`, 0.1 s each |
+| 5 | `nis_change_objective` 20x → 4x → 10x | 20:21:49, 20:23:30 | **pass** | Nosepiece 2 → 0 → 1, `arrived: true` both times, NIS status bar followed |
+| 6 | `nis_capture("bridge_check_2026-10-29.nd2")` | 21:05:03 → 21:05:44 | **pass** | **NIS did not crash**; event log `capture ok`, 41.3 s; file saved (6.5 MB, 3 × 1024 × 1024, GFP/RFP/TD); `nis_status` answered afterwards, NIS responding |
+| 7-9 | ND run, status during run, finish | - | **not run** | Needs the template's settings first |
+
+Notes:
+
+- The laser was off for the capture, so the image is dark (max 62 of 65535).
+  The active optical configuration was a GFP/RFP/TD one, not DIC_10x: the
+  bridge cannot read or set it, so select it in NIS before a real capture.
+- `Capture`, `ImageSaveAs` and `CloseCurrentDocument` all returned 0 although
+  the file was saved, so 0 is not a failure code for these calls.
+- `ChangeObjective` (`rc_calibration`) returned 0 both times, but NIS's
+  objective name had already followed the turret. **Open question:** the
+  capture's pixel size is 0.215 µm, small for the 10x at 1024 × 1024 unless a
+  scan zoom was set. Check whether NIS saved the 10x calibration.
+- Activating an AX optical configuration in NIS can turn the turret to that
+  configuration's objective.
 
 ## Safety rules (enforced in code)
 

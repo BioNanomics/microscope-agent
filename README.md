@@ -69,7 +69,7 @@ python -m timelapse.scheduler --backend mock --model-trigger ...   # Claude judg
 python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
 ```
 
-## NIS bridge (`nis-mcp`) - not yet tested on the scope
+## NIS bridge (`nis-mcp`) - status, moves, objective and capture tested on the scope; ND runs not yet
 
 A separate MCP server for what only NIS-Elements can do: the AX confocal
 lasers and saved ND experiments. A JOBS Python task inside NIS
