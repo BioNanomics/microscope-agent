@@ -56,7 +56,6 @@ separate server, `nis-mcp`.
 2. In NIS, open **JOBS** and create a job with one **Python** task.
 3. Replace the task's code with the whole of
    `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
-   (not `acquisition/nis_bridge/bridge_job.py`, which only forwards to it),
    then save the job, for example
    as `NIS bridge`.
 4. Run the job. Its log shows

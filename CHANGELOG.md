@@ -39,6 +39,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   `nis-mcp-monitor`. CI installs the package on its own and tests it on
   Windows and Ubuntu.
 
+### Removed
+- `acquisition/nis_bridge/` (the old `bridge_job.py` forwarder). It looked
+  like the bridge job but failed inside NIS when pasted. The only bridge job
+  is now `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
+  (`nis-mcp-bridge job-file` prints the path).
+
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
   surveyed by `aml18_survey`: neurons-only opening, brightfield with RFP glow,

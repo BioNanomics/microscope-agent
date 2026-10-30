@@ -17,7 +17,7 @@ import pytest
 
 from acquisition import estop, nis_monitor, paths
 from acquisition.backends import nis_bridge as client_mod
-from acquisition.nis_bridge import bridge_job as bj
+from nis_elements_mcp import nis_bridge_job as bj
 from acquisition.orchestration import stage_positions, worm_follow
 from harness import context
 from mcp_server.nis import nis_tools
