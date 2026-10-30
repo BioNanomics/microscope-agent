@@ -14,16 +14,20 @@ for real work.
 
 ## How it fits together
 
+All of these files are in the `nis-elements-mcp` package,
+`packages/nis-elements-mcp/src/nis_elements_mcp/`. The old paths in
+`acquisition/` and `mcp_server/nis/` forward to them.
+
 ```
 MCP client (Claude)
    │  stdio
    ▼
-mcp_server/nis/nis_server.py          confirm gate, capture-folder rule, estop tool
+nis_server.py / nis_tools.py         confirm gate, capture-folder rule, estop tool
    │
-acquisition/backends/nis_bridge.py   e-stop checked before sending
+nis_bridge_client.py                e-stop checked before sending
    │  HTTP, 127.0.0.1:8766
    ▼
-acquisition/nis_bridge/bridge_job.py  JOBS Python task, runs inside nis_ar.exe
+nis_bridge_job.py                   JOBS Python task, runs inside nis_ar.exe
    │  ctypes
    ▼
 g5_regprocs.dll  (NIS macro functions: StgMoveXY, Stg_SetNosepiecePosition, Capture, ND_RunExperiment, ...)
@@ -51,7 +55,9 @@ separate server, `nis-mcp`.
    after it, and the e-stop is clear (`python -m acquisition.estop status`).
 2. In NIS, open **JOBS** and create a job with one **Python** task.
 3. Replace the task's code with the whole of
-   `acquisition/nis_bridge/bridge_job.py`, then save the job, for example
+   `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
+   (not `acquisition/nis_bridge/bridge_job.py`, which only forwards to it),
+   then save the job, for example
    as `NIS bridge`.
 4. Run the job. Its log shows
    `NIS bridge v1 listening on 127.0.0.1:8766, pid <NIS pid>`.

@@ -9,7 +9,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from acquisition import estop, nis_monitor
+from nis_elements_mcp import estop, nis_monitor
 
 
 class Widget:
@@ -85,12 +85,12 @@ def panel_mod(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "tkinter", tk)
     monkeypatch.setitem(sys.modules, "tkinter.messagebox", mb)
     monkeypatch.setattr(estop, "ESTOP_PATH", tmp_path / "ESTOP")
-    sys.modules.pop("acquisition.estop_panel", None)
-    mod = importlib.import_module("acquisition.estop_panel")
+    sys.modules.pop("nis_elements_mcp.estop_panel", None)
+    mod = importlib.import_module("nis_elements_mcp.estop_panel")
     mod.real_claim = mod._claim_single_instance                    # the tests of the mutex use this
     monkeypatch.setattr(mod, "_claim_single_instance", lambda: True)   # a real mutex would outlive the test
     yield mod, asked
-    sys.modules.pop("acquisition.estop_panel", None)
+    sys.modules.pop("nis_elements_mcp.estop_panel", None)
 
 
 def make_panel(mod, **kw):

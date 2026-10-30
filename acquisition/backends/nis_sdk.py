@@ -194,7 +194,7 @@ class NISSdk:
         # E-STOP FIRST, before range checks, before anything. This is the
         # lowest point every XY move passes through, which is the only
         # place a stop can be effective against a caller that is already
-        # misbehaving - see acquisition/estop.py's header for the incident
+        # misbehaving - see nis_elements_mcp/estop.py's header for the incident
         # this exists because of.
         estop.check()
         before = self.XY_GetPosition()

@@ -8,11 +8,11 @@ import threading
 
 import pytest
 
-from acquisition import nis_events, nis_monitor as monitor
-from acquisition.backends import nis_bridge as client_mod
-from acquisition.nis_bridge import bridge_job as bj
-from mcp_server.nis import nis_tools
-from tests.test_nis_bridge import bridge, estop_file, events_log, raw  # noqa: F401  (fixtures)
+from nis_elements_mcp import nis_events, nis_monitor as monitor
+from nis_elements_mcp import nis_bridge_client as client_mod
+from nis_elements_mcp import nis_bridge_job as bj
+from nis_elements_mcp import nis_tools
+from nis_elements_mcp.testing import bridge, estop_file, events_log, raw  # noqa: F401  (fixtures)
 
 NOW = datetime.datetime(2026, 10, 15, 14, 0, 0)
 
@@ -77,11 +77,24 @@ def test_checked_passes_good_answers_and_raises_on_failures():
             nis_tools._checked(bad)
 
 
-def test_capture_folder_defaults_under_data_nis_captures(tmp_path, monkeypatch):
-    monkeypatch.delenv("CONFOCAL_NIS_CAPTURE_DIR", raising=False)
-    monkeypatch.setattr(nis_tools, "data_root", lambda: tmp_path)
+def test_capture_folder_defaults_under_home_nis_mcp(tmp_path, monkeypatch):
+    monkeypatch.delenv("NIS_CAPTURE_DIR", raising=False)
+    monkeypatch.setattr(nis_tools.Path, "home", lambda: tmp_path)
     d = nis_tools.capture_dir()
-    assert d == tmp_path / "data" / "NIS" / "captures" and d.is_dir()
+    assert d == tmp_path / "nis-mcp" / "captures" and d.is_dir()
+
+
+def test_capture_folder_follows_nis_capture_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("NIS_CAPTURE_DIR", str(tmp_path / "mine"))
+    assert nis_tools.capture_dir() == tmp_path / "mine"
+
+
+def test_event_log_folder_follows_nis_log_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("NIS_LOG_DIR", str(tmp_path / "logs"))
+    assert nis_events.events_dir() == tmp_path / "logs"
+    monkeypatch.delenv("NIS_LOG_DIR")
+    monkeypatch.setattr(nis_events.Path, "home", lambda: tmp_path)
+    assert nis_events.events_dir() == tmp_path / "nis-mcp" / "logs"
 
 
 # ---- event log -------------------------------------------------------------

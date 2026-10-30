@@ -23,7 +23,7 @@ from harness import context
 from mcp_server.nis import nis_tools
 from tests.fakes import fake_ti2  # noqa: F401  (fixture)
 from tests.fakes_camera import install_fake_camera_stack
-from tests.test_nis_bridge import FakeNIS, bridge, estop_file, raw  # noqa: F401  (fixtures)
+from nis_elements_mcp.testing import FakeNIS, bridge, estop_file, raw  # noqa: F401  (fixtures)
 
 
 # ---- MCP server entry points -------------------------------------------------------
@@ -54,6 +54,7 @@ def test_server_modules_start_when_run_with_dash_m(module, monkeypatch):
     monkeypatch.setattr(MCPServer, "run", lambda self, transport: ran.append(transport))
     monkeypatch.setattr(estop, "launch_panel", lambda: None)
     monkeypatch.setattr(nis_monitor, "launch", lambda: None)
+    monkeypatch.delitem(sys.modules, module, raising=False)       # run it as a fresh `python -m` would
     runpy.run_module(module, run_name="__main__")
     assert ran == ["stdio"]
 
@@ -134,6 +135,7 @@ def test_cli_prints_the_bridge_answer(bridge, monkeypatch, capsys):
 def test_cli_module_runs_as_a_script(bridge, monkeypatch, capsys):
     nis, url, c = bridge
     monkeypatch.setattr(sys, "argv", ["nis_bridge", "--url", url, "status"])
+    monkeypatch.delitem(sys.modules, 'acquisition.backends.nis_bridge', raising=False)       # run it as a fresh `python -m` would
     runpy.run_module("acquisition.backends.nis_bridge", run_name="__main__")
     assert "xy_um" in capsys.readouterr().out
 
@@ -209,6 +211,7 @@ def test_monitor_probe_is_false_off_windows(monkeypatch):
 def test_monitor_module_prints_one_snapshot_as_a_script(monkeypatch, capsys):
     monkeypatch.setenv("CONFOCAL_NIS_BRIDGE_URL", "http://127.0.0.1:9")
     monkeypatch.setattr(sys, "argv", ["nis_monitor", "--once"])
+    monkeypatch.delitem(sys.modules, 'acquisition.nis_monitor', raising=False)       # run it as a fresh `python -m` would
     runpy.run_module("acquisition.nis_monitor", run_name="__main__")
     assert "bridge:" in capsys.readouterr().out
 
@@ -294,5 +297,6 @@ def test_estop_panel_runs_as_a_script(monkeypatch):
     monkeypatch.setitem(sys.modules, "tkinter", tk)
     monkeypatch.setitem(sys.modules, "tkinter.messagebox", tk.messagebox)
     monkeypatch.setattr(sys, "argv", ["estop_panel"])
+    monkeypatch.delitem(sys.modules, 'acquisition.estop_panel', raising=False)       # run it as a fresh `python -m` would
     with contextlib.suppress(SystemExit):                          # no display -> exit 1; already open -> returns
         runpy.run_module("acquisition.estop_panel", run_name="__main__")

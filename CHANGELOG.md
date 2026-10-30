@@ -13,6 +13,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   (`nis_server.py`, `nis_tools.py`; was `server_nis.py`, `nis_tools.py`).
   New commands `baumer-ti2-mcp` and `nis-mcp`; the old `confocal-mcp` and
   `confocal-mcp-nis` still work. Tool names are unchanged.
+- The NIS-Elements MCP server is now its own package, `nis-elements-mcp`, in
+  `packages/nis-elements-mcp/` (server, tools, bridge client, bridge job,
+  e-stop and STOP panel, event log, monitor, and their tests). This repo
+  depends on it from that folder. The old modules (`acquisition/estop.py`,
+  `acquisition/nis_*.py`, `acquisition/backends/nis_bridge.py`,
+  `acquisition/nis_bridge/bridge_job.py`, `mcp_server/nis/`) forward to the
+  package, so imports and `python -m` commands are unchanged; this repo keeps
+  its NIS logs and captures in `logs/nis` and `data/NIS/captures`.
+  **Paste `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
+  into the NIS JOBS task from now on.** `nis-mcp` now comes from the package.
 
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse

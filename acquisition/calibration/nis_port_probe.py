@@ -15,7 +15,7 @@ import limjob
 # thread just queues requests, since NIS is not known to be thread-safe.
 #
 # SAFETY: moves are relative and capped at MAX_STEP_UM per call; nothing
-# moves while the e-stop file exists (same file acquisition/estop.py uses);
+# moves while the e-stop file exists (same file nis_elements_mcp/estop.py uses);
 # Z is never moved; objective changes are limited to 4x and 10x, whose long
 # working distances cannot reach the dish.
 import ctypes as ct, http.server, json, os, queue, threading, time, urllib.parse

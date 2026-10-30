@@ -218,6 +218,7 @@ def test_nis_sdk_demo(fake_ti2, entry, capsys):
 
 def test_estop_cli_entry_point(entry, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["estop", "status"])
+    monkeypatch.delitem(sys.modules, 'acquisition.estop', raising=False)       # run it as a fresh `python -m` would
     runpy.run_module("acquisition.estop", run_name="__main__")
     assert "clear" in capsys.readouterr().out
 

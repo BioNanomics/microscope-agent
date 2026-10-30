@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from acquisition import estop
+from nis_elements_mcp import estop
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ def test_launch_panel_starts_detached_process(monkeypatch):
     monkeypatch.setattr(estop, "panel_running", lambda: False)
     monkeypatch.setattr(estop.subprocess, "Popen", lambda *a, **k: opened.append(a[0]))
     estop.launch_panel()
-    assert opened[0][-2:] == ["-m", "acquisition.estop_panel"]
+    assert opened[0][-2:] == ["-m", "nis_elements_mcp.estop_panel"]
 
 
 def test_launch_panel_failure_goes_to_stderr(monkeypatch, capsys):

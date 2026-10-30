@@ -73,7 +73,7 @@ python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --
 
 A separate MCP server for what only NIS-Elements can do: the AX confocal
 lasers and saved ND experiments. A JOBS Python task inside NIS
-(`acquisition/nis_bridge/bridge_job.py`) serves NIS macro calls on
+(`packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`) serves NIS macro calls on
 `127.0.0.1:8766`. The `nis-mcp` server talks to it and adds a
 confirm gate, the e-stop and a capture-folder rule. `baumer_ti2_server` is
 unchanged. Setup, safety rules and the on-scope test plan:

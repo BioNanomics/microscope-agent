@@ -13,7 +13,7 @@ import pytest
 from acquisition import estop
 from acquisition.calibration import ti2_config, ti2_inventory
 from tests.fakes import fake_ti2  # noqa: F401  (fixture)
-from tests.test_nis_bridge import FakeNIS
+from nis_elements_mcp.testing import FakeNIS
 
 
 def make_setting(name, control, value=1, lower=0, higher=10, unit="u", enabled=True, long_name=None):
