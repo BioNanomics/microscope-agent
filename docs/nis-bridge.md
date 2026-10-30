@@ -201,12 +201,23 @@ Notes:
 ## Safety rules (enforced in code)
 
 - Motion and acquisition answer **POST** only, so a browser cannot trigger them.
-- The **e-stop** is checked in the client and again in the bridge. Ending an
-  ND run is always allowed.
-- XY moves are **relative, at most 1000 µm per axis** per call. **Z is never moved.**
-- Objective changes are limited to **4× and 10×**, the long working distances.
+- The **e-stop** is checked in the client and again in the bridge. Both use
+  `~/.nis-mcp/ESTOP` (`NIS_ESTOP_FILE`), the same file the Ti2 code here
+  uses. Ending an ND run is always allowed.
+- XY moves are **relative, at most 1000 µm per axis** per call
+  (`NIS_MAX_STEP_UM`). **Z is never moved.**
+- Objective changes are limited to **4× and 10×**, the long working distances
+  (`NIS_ALLOWED_OBJECTIVES`).
+- ND runs can be limited to named experiments (`NIS_ALLOWED_EXPERIMENTS`).
+- The client checks these limits before sending; the bridge inside NIS checks
+  the step and objective limits again with its own settings (NIS's
+  environment, or the defaults at the top of `nis_bridge_job.py`). The
+  stricter one wins.
 - MCP tools that move or acquire need **`confirm=True`**.
 - `nis_capture` saves only into the capture folder
-  (`CONFOCAL_NIS_CAPTURE_DIR`, else `data/NIS/captures`; ND experiments save wherever their "Save to File" path points, use `data/NIS/nd_runs`), by plain file name,
+  (`NIS_CAPTURE_DIR`; this repo uses `data/NIS/captures`; ND experiments save wherever their "Save to File" path points, use `data/NIS/nd_runs`), by plain file name,
   and never overwrites.
 - The bridge listens on **127.0.0.1** only.
+
+All settings and their defaults are listed in
+`packages/nis-elements-mcp/src/nis_elements_mcp/settings.py`.

@@ -23,6 +23,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   its NIS logs and captures in `logs/nis` and `data/NIS/captures`.
   **Paste `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
   into the NIS JOBS task from now on.** `nis-mcp` now comes from the package.
+- `nis-elements-mcp` reads all its settings from `NIS_*` environment variables
+  (`settings.py`): `NIS_BRIDGE_HOST/PORT`, `NIS_CAPTURE_DIR`, `NIS_LOG_DIR`,
+  `NIS_ESTOP_FILE`, `NIS_ALLOWED_OBJECTIVES` (default 4,10),
+  `NIS_ALLOWED_EXPERIMENTS` (new: optional list of ND experiment names),
+  `NIS_MAX_STEP_UM` (default 1000), `NIS_NO_ESTOP_PANEL`, `NIS_NO_MONITOR`.
+  The limits are now also checked in the client before a request is sent.
+  **The e-stop file moved to `~/.nis-mcp/ESTOP`** for every process here and
+  for the bridge job; a stop engaged in the old `~/.confocal-mcp/ESTOP` is
+  moved there on first start. The old `CONFOCAL_*` switch names still work
+  in this repo. `nis_port_probe.py` no longer hard-codes a user path.
 
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse

@@ -118,7 +118,7 @@ def run_cli(monkeypatch, *argv):
 
 
 def test_cli_exits_with_the_reason_when_the_bridge_is_down_or_stopped(monkeypatch, estop_file):
-    monkeypatch.setenv("CONFOCAL_NIS_BRIDGE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("NIS_BRIDGE_PORT", "9")
     with pytest.raises(SystemExit, match="not reachable"):
         run_cli(monkeypatch, "status")
     estop_file.write_text("{}")
@@ -209,7 +209,7 @@ def test_monitor_probe_is_false_off_windows(monkeypatch):
 
 
 def test_monitor_module_prints_one_snapshot_as_a_script(monkeypatch, capsys):
-    monkeypatch.setenv("CONFOCAL_NIS_BRIDGE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("NIS_BRIDGE_PORT", "9")
     monkeypatch.setattr(sys, "argv", ["nis_monitor", "--once"])
     monkeypatch.delitem(sys.modules, 'acquisition.nis_monitor', raising=False)       # run it as a fresh `python -m` would
     runpy.run_module("acquisition.nis_monitor", run_name="__main__")

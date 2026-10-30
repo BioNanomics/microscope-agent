@@ -9,6 +9,8 @@
 
 import sys
 
+from acquisition import _nis_settings  # noqa: F401  (this repo's settings; moves an old e-stop)
+
 if __name__ == "__main__":
     import runpy
     runpy.run_module("nis_elements_mcp.estop_panel", run_name="__main__")

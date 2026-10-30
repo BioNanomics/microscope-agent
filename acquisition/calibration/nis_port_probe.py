@@ -21,7 +21,7 @@ import limjob
 import ctypes as ct, http.server, json, os, queue, threading, time, urllib.parse
 
 PORT, RUN_S, MAX_STEP_UM = 8765, 600, 1000.0
-ESTOP = r"C:\Users\AX Confocal\.confocal-mcp\ESTOP"
+ESTOP = os.environ.get("NIS_ESTOP_FILE") or os.path.join(os.path.expanduser("~"), ".nis-mcp", "ESTOP")
 ALLOWED_OBJECTIVES = ("4x", "10x")
 
 nis = ct.cdll.g5_regprocs
