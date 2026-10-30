@@ -1,6 +1,6 @@
 # Runtime data (captures, history logs) is anchored to CONFOCAL_MCP_DATA_DIR
 # at *import* time (acquisition/paths.py), so it must be set before any
-# test module imports mcp_server.loop_tools or acquisition.backends.nis_mock.
+# test module imports mcp_server.baumer_ti2.baumer_ti2_tools or acquisition.backends.nis_mock.
 import os
 import tempfile
 from pathlib import Path

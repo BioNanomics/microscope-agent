@@ -86,7 +86,7 @@ def prune_context_images(
     Does not mutate `messages` or any message dict in it - always
     returns new message/content lists, so a caller can keep its own
     full-fidelity history separately (e.g. for logging or the FrameStore
-    pattern in mcp_server/loop_tools.py's get_frame()) while only
+    pattern in mcp_server/baumer_ti2/baumer_ti2_tools.py's get_frame()) while only
     passing the pruned copy to the model.
 
     Raises ValueError if either count is negative.

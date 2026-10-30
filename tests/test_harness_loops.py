@@ -16,7 +16,7 @@ from acquisition import estop
 from acquisition.backends import nis_mock
 from acquisition.orchestration import stage_positions
 from harness import agent, mcp_agent
-from mcp_server import loop_tools
+from mcp_server.baumer_ti2 import baumer_ti2_tools
 
 ROOT = Path(__file__).parent.parent
 
@@ -31,8 +31,8 @@ def text(t):
 
 @pytest.fixture(autouse=True)
 def mock_stage(tmp_path, monkeypatch):
-    monkeypatch.setattr(loop_tools, "MOVE_HISTORY_PATH", tmp_path / "move.jsonl")
-    monkeypatch.setattr(loop_tools, "FRAME_HISTORY_PATH", tmp_path / "frame.jsonl")
+    monkeypatch.setattr(baumer_ti2_tools, "MOVE_HISTORY_PATH", tmp_path / "move.jsonl")
+    monkeypatch.setattr(baumer_ti2_tools, "FRAME_HISTORY_PATH", tmp_path / "frame.jsonl")
     monkeypatch.setattr(estop, "ESTOP_PATH", tmp_path / "ESTOP")
     monkeypatch.setattr(nis_mock.time, "sleep", lambda s: None)
     monkeypatch.setattr(nis_mock, "CAPTURE_DIR", tmp_path / "caps")
@@ -271,7 +271,7 @@ def test_mcp_main_loop(monkeypatch, capsys):
     monkeypatch.setattr(mcp_agent, "run_turn", turn)
     scripted_input(monkeypatch, ["", "hi", "exit"])
     asyncio.run(mcp_agent.main())
-    assert seen["params"].args == ["-m", "mcp_server.server_loop"]
+    assert seen["params"].args == ["-m", "mcp_server.baumer_ti2.baumer_ti2_server"]
     assert turns[0][0][0]["name"] == "get_pos" and len(turns) == 1
     assert "Claude: hello back" in capsys.readouterr().out
 

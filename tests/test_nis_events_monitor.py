@@ -11,7 +11,7 @@ import pytest
 from acquisition import nis_events, nis_monitor as monitor
 from acquisition.backends import nis_bridge as client_mod
 from acquisition.nis_bridge import bridge_job as bj
-from mcp_server import nis_tools
+from mcp_server.nis import nis_tools
 from tests.test_nis_bridge import bridge, estop_file, events_log, raw  # noqa: F401  (fixtures)
 
 NOW = datetime.datetime(2026, 10, 15, 14, 0, 0)

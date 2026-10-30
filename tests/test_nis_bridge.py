@@ -19,7 +19,7 @@ import pytest
 from acquisition import estop, nis_events, nis_monitor as monitor
 from acquisition.backends import nis_bridge as client_mod
 from acquisition.nis_bridge import bridge_job as bj
-from mcp_server import nis_tools
+from mcp_server.nis import nis_tools
 
 
 class FakeNIS:
@@ -318,7 +318,7 @@ def test_nis_server_exposes_exactly_the_nis_tools(tmp_path):
     async def names():
         env = dict(os.environ, CONFOCAL_NO_ESTOP_PANEL="1", CONFOCAL_NO_NIS_MONITOR="1",
                    CONFOCAL_MCP_DATA_DIR=str(tmp_path))
-        params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server_nis"], env=env)
+        params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.nis.nis_server"], env=env)
         async with Client(stdio_client(params)) as client:
             return {t.name for t in (await client.list_tools()).tools}
 

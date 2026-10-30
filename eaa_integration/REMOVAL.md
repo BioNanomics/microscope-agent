@@ -14,7 +14,7 @@ pulled in only ever lived in `eaa_integration/.venv/`, which this
 deletes. No package was ever installed into the main project's
 `.venv/`, and no line inside `eaa_integration/` references anything
 outside this folder except a read-only path to the main project's
-Python executable and `mcp_server/server_loop.py` (never modified).
+Python executable and `mcp_server/baumer_ti2/baumer_ti2_server.py` (never modified).
 
 ## 2. Revert the two touch points outside this folder
 
@@ -31,7 +31,7 @@ revert independently of each other:
   integration and are still needed by the rest of the project - leave
   those alone.)
 
-- **Nothing else.** `mcp_server/server_loop.py`, `mcp_server/loop_tools.py`,
+- **Nothing else.** `mcp_server/baumer_ti2/baumer_ti2_server.py`, `mcp_server/baumer_ti2/baumer_ti2_tools.py`,
   `requirements.txt`, `README.md`, and every other file outside this
   folder were never modified to build this integration - there is
   nothing else to revert.

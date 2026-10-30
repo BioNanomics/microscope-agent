@@ -41,7 +41,7 @@
 # So: X/Y properties are in units of 0.1um ("decimicrons"), Z is in units
 # of 0.01um ("centimicrons"). XY_GetPosition/XY_Move/Z_GetPosition/Z_Move
 # below convert to/from plain microns at their boundary so callers
-# (StagePositionManager, mcp_server/loop_tools.py) never see raw counts.
+# (StagePositionManager, mcp_server/baumer_ti2/baumer_ti2_tools.py) never see raw counts.
 # ------------------------------------------------------------
 
 import queue
@@ -170,7 +170,7 @@ class NISSdk:
 
     Every instance shares the same underlying COM connection (see
     _ComThread above) - constructing NISSdk() repeatedly (once per MCP
-    tool call, as mcp_server/loop_tools.py does) is cheap and does not open a
+    tool call, as mcp_server/baumer_ti2/baumer_ti2_tools.py does) is cheap and does not open a
     new connection each time.
     """
 

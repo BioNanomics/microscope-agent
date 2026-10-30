@@ -3,14 +3,14 @@
 # MCP tools that drive the microscope THROUGH NIS-Elements, via the NIS
 # bridge (acquisition/nis_bridge/bridge_job.py, running as a JOBS task;
 # client in acquisition/backends/nis_bridge.py). Served by their own
-# server, mcp_server/server_nis.py - kept apart from loop_tools.py, which
+# server, mcp_server/nis/nis_server.py - kept apart from baumer_ti2_tools.py, which
 # by team direction has exactly its agreed tools and no NIS-Elements.
 #
-# WHAT THIS ADDS over loop_tools: things only NIS can do - the AX laser
+# WHAT THIS ADDS over baumer_ti2_tools: things only NIS can do - the AX laser
 # acquisition set up in NIS (capture, saved ND experiments) and NIS's own
 # objective change.
 #
-# SAFETY, same shape as loop_tools:
+# SAFETY, same shape as baumer_ti2_tools:
 #   * every tool that moves or acquires requires confirm=True
 #     (PermissionError otherwise), exactly like backend="sdk" there
 #   * the e-stop is checked in the client before a request is sent, and

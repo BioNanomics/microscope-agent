@@ -7,7 +7,7 @@ from PIL import Image
 from acquisition import estop
 from acquisition.backends import nis_mock
 from acquisition.orchestration import stage_positions
-from mcp_server import loop_tools as lt
+from mcp_server.baumer_ti2 import baumer_ti2_tools as lt
 from tests.fakes import fake_ti2  # noqa: F401  (fixture)
 
 

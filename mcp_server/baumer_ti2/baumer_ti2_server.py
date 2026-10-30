@@ -1,22 +1,23 @@
-# server_loop.py
+# baumer_ti2_server.py
 # ------------------------------------------------------------
-# Minimal MCP server entry point: registers ONLY loop_tools.py's
+# Minimal MCP server entry point: registers ONLY baumer_ti2_tools.py's
 # functions (get_image, get_pos, move, get_move_history, estop) - kept
 # deliberately minimal, 5 tools total, by explicit team direction.
 #
 # Run, either way:
-#   confocal-mcp                      (installed console script - see pyproject.toml)
-#   python -m mcp_server.server_loop  (from a source checkout)
+#   baumer-ti2-mcp                    (installed console script - see pyproject.toml;
+#                                      the old name confocal-mcp still works)
+#   python -m mcp_server.baumer_ti2.baumer_ti2_server  (from a source checkout)
 #
 # Point an MCP client at whichever form you use, e.g.:
-#   { "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
+#   { "mcpServers": { "baumer-ti2": { "command": "baumer-ti2-mcp" } } }
 # ------------------------------------------------------------
 
 from mcp.server.mcpserver import MCPServer
 
 from acquisition import estop
 
-from mcp_server import loop_tools as tools
+from mcp_server.baumer_ti2 import baumer_ti2_tools as tools
 
 mcp = MCPServer("ConfocalOrchestrator-Loop")
 
@@ -28,7 +29,7 @@ mcp.add_tool(tools.estop)
 
 
 def main() -> None:
-    """Console entry point (``confocal-mcp``): serve the 5 tools over stdio."""
+    """Console entry point (``baumer-ti2-mcp``): serve the 5 tools over stdio."""
     # The STOP panel, on screen for as long as this server runs.
     estop.launch_panel()
     mcp.run(transport="stdio")

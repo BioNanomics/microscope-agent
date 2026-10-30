@@ -9,7 +9,7 @@ those available to our code and to an MCP client.
 **Status: status, XY moves and objective changes work on the scope. Capture and ND runs now run on NIS's main thread (a Win32 timer hooked in `run()`); this is untested on the scope. Run step 6 first.**
 The test plan below is what still has to pass on the scope. Driving
 capture through NIS reverses an earlier team decision (see the header of
-`mcp_server/loop_tools.py`), so it also needs sign-off before it is used
+`mcp_server/baumer_ti2/baumer_ti2_tools.py`), so it also needs sign-off before it is used
 for real work.
 
 ## How it fits together
@@ -18,7 +18,7 @@ for real work.
 MCP client (Claude)
    │  stdio
    ▼
-mcp_server/server_nis.py          confirm gate, capture-folder rule, estop tool
+mcp_server/nis/nis_server.py          confirm gate, capture-folder rule, estop tool
    │
 acquisition/backends/nis_bridge.py   e-stop checked before sending
    │  HTTP, 127.0.0.1:8766
@@ -34,8 +34,8 @@ runs inside NIS, and it needs nothing beyond the Python standard library,
 so nothing has to be installed into NIS's own Python. If our code fails,
 NIS keeps running.
 
-`server_loop.py` and its tools are unchanged. The NIS tools are a
-separate server, `confocal-mcp-nis`.
+`baumer_ti2_server.py` and its tools are unchanged. The NIS tools are a
+separate server, `nis-mcp`.
 
 ## What was already verified (2026-09-29)
 
@@ -90,7 +90,7 @@ first surprise. Press the STOP panel if anything moves unexpectedly.
 | 8 | Status during a run | during step 7, from a second terminal: `status` | Answers with `nd_running: true`, or hangs until the run ends (the blocking case from step 7). |
 | 9 | Finish early | run `bridge test` with more loops, then `nd-finish` | The run ends after the current loop, and the file keeps the frames so far. |
 | 10 | Shutdown | `shutdown` | The job ends by itself, and `status` then reports the bridge unreachable. |
-| 11 | MCP | Add `confocal-mcp-nis` to the MCP client config and ask for `nis_status` | Same answer as step 1. Motion tools refuse without `confirm=True`. |
+| 11 | MCP | Add `nis-mcp` to the MCP client config and ask for `nis_status` | Same answer as step 1. Motion tools refuse without `confirm=True`. |
 
 If steps 7–8 show that `ND_RunExperiment` blocks, the bridge can still run
 experiments, but nothing else can be asked while one is in progress. The

@@ -45,7 +45,7 @@ identifying that specific capture.
 
 `backend` is `"mock"` (default, safe, simulated) or `"sdk"` (real
 hardware - `move()`/`get_image()` require `confirm=True` for anything
-that touches real hardware). See `mcp_server/loop_tools.py`'s header
+that touches real hardware). See `mcp_server/baumer_ti2/baumer_ti2_tools.py`'s header
 comment for the full design rationale (why no `get_time()`, why no
 `stage_revision` yet, etc.).
 
@@ -69,29 +69,29 @@ python -m timelapse.scheduler --backend mock --model-trigger ...   # Claude judg
 python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --window 1h
 ```
 
-## NIS bridge (`confocal-mcp-nis`) - not yet tested on the scope
+## NIS bridge (`nis-mcp`) - not yet tested on the scope
 
 A separate MCP server for what only NIS-Elements can do: the AX confocal
 lasers and saved ND experiments. A JOBS Python task inside NIS
 (`acquisition/nis_bridge/bridge_job.py`) serves NIS macro calls on
-`127.0.0.1:8766`. The `confocal-mcp-nis` server talks to it and adds a
-confirm gate, the e-stop and a capture-folder rule. `server_loop` is
+`127.0.0.1:8766`. The `nis-mcp` server talks to it and adds a
+confirm gate, the e-stop and a capture-folder rule. `baumer_ti2_server` is
 unchanged. Setup, safety rules and the on-scope test plan:
 [docs/nis-bridge.md](docs/nis-bridge.md).
 
 ```
 python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs
 python -m acquisition.nis_monitor                        # live view: status + every action (logs/nis/)
-confocal-mcp-nis                                         # the MCP server
-python -m mcp_server.server_nis                          # same, from a source checkout
+nis-mcp                                                  # the MCP server (old name: confocal-mcp-nis)
+python -m mcp_server.nis.nis_server                          # same, from a source checkout
 ```
 
 MCP client config for a source checkout (adjust the path to this repo's venv):
 
 ```json
-{ "mcpServers": { "confocal-nis": {
+{ "mcpServers": { "nis": {
     "command": "D:\\path\\to\\microscope-agent\\.venv\\Scripts\\python.exe",
-    "args": ["-m", "mcp_server.server_nis"],
+    "args": ["-m", "mcp_server.nis.nis_server"],
     "cwd": "D:\\path\\to\\microscope-agent" } } }
 ```
 
@@ -148,15 +148,15 @@ machine. Not needed for `backend="mock"`.
 ## Run
 
 ```
-confocal-mcp                       # installed console script
-python -m mcp_server.server_loop   # equivalent, from a source checkout
+baumer-ti2-mcp                     # installed console script (old name: confocal-mcp)
+python -m mcp_server.baumer_ti2.baumer_ti2_server   # equivalent, from a source checkout
 ```
 
 Point an MCP client at it - Claude Desktop's `claude_desktop_config.json`, or a
 project-level `.mcp.json` for Claude Code:
 
 ```json
-{ "mcpServers": { "confocal": { "command": "confocal-mcp" } } }
+{ "mcpServers": { "baumer-ti2": { "command": "baumer-ti2-mcp" } } }
 ```
 
 Data (captures, move/frame history logs, saved positions) is written under the
@@ -164,8 +164,8 @@ current working directory - so launch the server from a stable location, or set
 `CONFOCAL_MCP_DATA_DIR` to pin it explicitly:
 
 ```json
-{ "mcpServers": { "confocal": {
-    "command": "confocal-mcp",
+{ "mcpServers": { "baumer-ti2": {
+    "command": "baumer-ti2-mcp",
     "env": { "CONFOCAL_MCP_DATA_DIR": "D:\\path\\to\\your\\data" }
 } } }
 ```
@@ -180,8 +180,8 @@ stderr rather than failing at the first capture.
 
 A second, independent way to drive the same tools - a small interactive
 CLI that calls Claude (Anthropic API) directly with tool use, importing
-`mcp_server/loop_tools.py`'s functions in-process rather than going
-through `server_loop.py`'s MCP/stdio protocol. `server_loop.py` is
+`mcp_server/baumer_ti2/baumer_ti2_tools.py`'s functions in-process rather than going
+through `baumer_ti2_server.py`'s MCP/stdio protocol. `baumer_ti2_server.py` is
 unaffected either way - use whichever fits: MCP for Claude Desktop/Code,
 this loop for a standalone script.
 
@@ -203,8 +203,8 @@ python -m harness.agent
 ## MCP client harness (`harness/mcp_agent.py`)
 
 A third way to drive the same tools - the real-MCP-protocol counterpart
-to `harness/agent.py`. Instead of importing `loop_tools.py` in-process,
-this one spawns `server_loop.py` as a separate subprocess and talks to
+to `harness/agent.py`. Instead of importing `baumer_ti2_tools.py` in-process,
+this one spawns `baumer_ti2_server.py` as a separate subprocess and talks to
 it exactly the way Claude Desktop/Code do: real MCP over stdio, using
 the current MCP SDK (`mcp==2.0.0`, protocol version `2026-07-28`). Same
 `.env`/`ANTHROPIC_API_KEY` setup, same live "y/N" real-hardware approval

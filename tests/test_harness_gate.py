@@ -17,7 +17,7 @@ import json
 import pytest
 
 from harness import agent, mcp_agent
-from mcp_server import loop_tools
+from mcp_server.baumer_ti2 import baumer_ti2_tools
 
 
 class FakeImage:
@@ -50,7 +50,7 @@ def gate(monkeypatch):
 
 @pytest.fixture
 def stub_tools(monkeypatch):
-    """Stub loop_tools so nothing real runs; record kwargs each was called with."""
+    """Stub baumer_ti2_tools so nothing real runs; record kwargs each was called with."""
     seen = {}
 
     def get_image(**kw):
@@ -61,8 +61,8 @@ def stub_tools(monkeypatch):
         seen["move"] = kw
         return {"position": {"x": kw["x"], "y": kw["y"], "z": 0}}
 
-    monkeypatch.setattr(loop_tools, "get_image", get_image)
-    monkeypatch.setattr(loop_tools, "move", move)
+    monkeypatch.setattr(baumer_ti2_tools, "get_image", get_image)
+    monkeypatch.setattr(baumer_ti2_tools, "move", move)
     return seen
 
 
@@ -83,7 +83,7 @@ def test_agent_tool_schemas_never_expose_confirm():
 
 
 def test_mcp_agent_strips_confirm_from_real_server_schemas():
-    from mcp_server.server_loop import mcp
+    from mcp_server.baumer_ti2.baumer_ti2_server import mcp
     mcp_tools = asyncio.run(mcp.list_tools())
     assert any("confirm" in t.input_schema.get("properties", {}) for t in mcp_tools), \
         "precondition: the server itself does expose confirm (the harness must strip it)"

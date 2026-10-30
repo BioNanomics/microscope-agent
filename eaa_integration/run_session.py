@@ -5,7 +5,7 @@
 # to fully remove this integration later.
 #
 # WHAT THIS DOES: wraps the EXISTING, UNMODIFIED microscope MCP server
-# (../mcp_server/server_loop.py) as an EAA tool via MCPTool, and starts
+# (../mcp_server/baumer_ti2/baumer_ti2_server.py) as an EAA tool via MCPTool, and starts
 # an EAA BaseTaskManager terminal chat session on top of it. The MCP
 # server itself is spawned as a subprocess using the MAIN project's own
 # .venv (it needs mcp/PIL/harvesters/pywin32, none of which are
@@ -101,7 +101,7 @@ there is no way to move Z through this tool surface, by design.
 #  3. The MCP server is spawned through the main project's *virtualenv*
 #     python.exe, a ~270 KB redirector stub that re-execs the real
 #     interpreter as a child. mcp's stdio client only ever signals the
-#     stub, orphaning the real server_loop.py (and the camera / NIS SDK
+#     stub, orphaning the real baumer_ti2_server.py (and the camera / NIS SDK
 #     handles it holds). --webui's HTML server subprocess has the same
 #     shape. taskkill /T walks the whole tree before we go.
 
@@ -262,7 +262,7 @@ def main() -> None:
             "mcpServers": {
                 "confocal": {
                     "command": str(MAIN_VENV_PYTHON),
-                    "args": ["-m", "mcp_server.server_loop"],
+                    "args": ["-m", "mcp_server.baumer_ti2.baumer_ti2_server"],
                     "cwd": str(MAIN_REPO_ROOT),
                 }
             }

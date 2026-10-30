@@ -20,7 +20,7 @@ from acquisition.backends import nis_bridge as client_mod
 from acquisition.nis_bridge import bridge_job as bj
 from acquisition.orchestration import stage_positions, worm_follow
 from harness import context
-from mcp_server import nis_tools
+from mcp_server.nis import nis_tools
 from tests.fakes import fake_ti2  # noqa: F401  (fixture)
 from tests.fakes_camera import install_fake_camera_stack
 from tests.test_nis_bridge import FakeNIS, bridge, estop_file, raw  # noqa: F401  (fixtures)
@@ -29,25 +29,25 @@ from tests.test_nis_bridge import FakeNIS, bridge, estop_file, raw  # noqa: F401
 # ---- MCP server entry points -------------------------------------------------------
 
 def test_nis_server_main_opens_the_panel_and_monitor_then_serves(monkeypatch):
-    from mcp_server import server_nis
+    from mcp_server.nis import nis_server
     calls = []
-    monkeypatch.setattr(server_nis.estop, "launch_panel", lambda: calls.append("panel"))
-    monkeypatch.setattr(server_nis.nis_monitor, "launch", lambda: calls.append("monitor"))
-    monkeypatch.setattr(server_nis.mcp, "run", lambda transport: calls.append(("run", transport)))
-    server_nis.main()
+    monkeypatch.setattr(nis_server.estop, "launch_panel", lambda: calls.append("panel"))
+    monkeypatch.setattr(nis_server.nis_monitor, "launch", lambda: calls.append("monitor"))
+    monkeypatch.setattr(nis_server.mcp, "run", lambda transport: calls.append(("run", transport)))
+    nis_server.main()
     assert calls == ["panel", "monitor", ("run", "stdio")]
 
 
 def test_loop_server_main_opens_the_panel_then_serves(monkeypatch):
-    from mcp_server import server_loop
+    from mcp_server.baumer_ti2 import baumer_ti2_server
     calls = []
-    monkeypatch.setattr(server_loop.estop, "launch_panel", lambda: calls.append("panel"))
-    monkeypatch.setattr(server_loop.mcp, "run", lambda transport: calls.append(("run", transport)))
-    server_loop.main()
+    monkeypatch.setattr(baumer_ti2_server.estop, "launch_panel", lambda: calls.append("panel"))
+    monkeypatch.setattr(baumer_ti2_server.mcp, "run", lambda transport: calls.append(("run", transport)))
+    baumer_ti2_server.main()
     assert calls == ["panel", ("run", "stdio")]
 
 
-@pytest.mark.parametrize("module", ["mcp_server.server_loop", "mcp_server.server_nis"])
+@pytest.mark.parametrize("module", ["mcp_server.baumer_ti2.baumer_ti2_server", "mcp_server.nis.nis_server"])
 def test_server_modules_start_when_run_with_dash_m(module, monkeypatch):
     from mcp.server.mcpserver import MCPServer
     ran = []
@@ -60,8 +60,8 @@ def test_server_modules_start_when_run_with_dash_m(module, monkeypatch):
 
 def test_the_nis_server_registers_the_nis_tools_in_process():
     import asyncio
-    from mcp_server import server_nis
-    names = {t.name for t in asyncio.run(server_nis.mcp.list_tools())}
+    from mcp_server.nis import nis_server
+    names = {t.name for t in asyncio.run(nis_server.mcp.list_tools())}
     assert names == {"nis_status", "nis_move_relative", "nis_change_objective", "nis_capture",
                      "nis_run_experiment", "nis_finish_experiment", "nis_list_optical_configs", "estop"}
 

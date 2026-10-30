@@ -1,4 +1,4 @@
-# loop_tools.py
+# baumer_ti2_tools.py
 # ------------------------------------------------------------
 # Minimal MCP surface for the normal agent control loop:
 #   get_image()         - capture + the stage position that goes with it
@@ -178,7 +178,7 @@ _camera_lock = threading.Lock()
 def _get_camera():
     """Return the process-wide BaumerGenICam, constructing it on first use.
 
-    The import is deferred to here so `import mcp_server.loop_tools` works on a
+    The import is deferred to here so `import mcp_server.baumer_ti2.baumer_ti2_tools` works on a
     core-only install (no cv2 / harvesters) - only get_image() actually needs
     the camera stack.
     """
@@ -315,7 +315,7 @@ def get_frame(frame_id: int) -> dict:
     position, stage_revision, timestamps) by the frame_id get_image()
     returned for it.
 
-    NOT registered as an MCP tool (see server_loop.py) - by explicit team
+    NOT registered as an MCP tool (see baumer_ti2_server.py) - by explicit team
     direction the chat-facing surface stays at 5 tools. This is a plain
     importable function for harness/analysis code that needs to resolve
     "frame 42" to its full-res file and the position it was captured at,
@@ -408,7 +408,7 @@ def move_focus(z: float, backend: str = "mock", confirm: bool = False) -> dict:
     ACTUAL resulting position - same shape/safety pattern as move(), but
     for Z.
 
-    NOT registered as an MCP tool (see server_loop.py) and NOT added to
+    NOT registered as an MCP tool (see baumer_ti2_server.py) and NOT added to
     any chat-facing tool list (harness/agent.py, harness/mcp_agent.py) -
     by explicit design (see this file's header comment on why move() is
     XY-only), a blind Z move must never be reachable from a chat prompt:

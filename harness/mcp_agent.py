@@ -2,15 +2,15 @@
 # ------------------------------------------------------------
 # Interactive harness loop - Plan A: calls Claude directly (Anthropic
 # API), but drives tools through a REAL MCP client talking to
-# mcp_server/server_loop.py as a separate subprocess over stdio, using
+# mcp_server/baumer_ti2/baumer_ti2_server.py as a separate subprocess over stdio, using
 # the official `mcp` SDK (mcp.client.Client). This is the MCP-protocol
-# counterpart to harness/agent.py (Plan B, which imports loop_tools.py's
+# counterpart to harness/agent.py (Plan B, which imports baumer_ti2_tools.py's
 # functions directly, in-process, with no MCP involved at all).
 #
 # Both harnesses are independent and permanent - neither replaces the
 # other. Use this one when the harness and the microscope server should
 # be separate processes (possibly on separate machines) talking real
-# MCP, or when you want to exercise server_loop.py itself, the same
+# MCP, or when you want to exercise baumer_ti2_server.py itself, the same
 # server Claude Desktop/Code connect to. Use agent.py when you want the
 # simplest possible path with no protocol/subprocess overhead.
 #
@@ -34,19 +34,19 @@
 # Client can connect to an in-process MCPServer object directly with no
 # subprocess or protocol framing at all - but that would just be Plan B
 # again with extra ceremony. The whole point of Plan A is a real client/
-# server boundary: server_loop.py runs as its own process (the same one
+# server boundary: baumer_ti2_server.py runs as its own process (the same one
 # Claude Desktop/Code would launch), reachable over stdio exactly the
 # way any external MCP client reaches it.
 #
 # WHY "confirm" IS STRIPPED FROM EVERY TOOL SCHEMA BEFORE CLAUDE SEES IT,
 # AND WHY THE HARNESS INJECTS IT ITSELF: identical reasoning to
-# agent.py's header comment - loop_tools.get_image()/move() gate real
+# agent.py's header comment - baumer_ti2_tools.get_image()/move() gate real
 # hardware behind confirm=True on the assumption that a human already
 # approved the call (true inside Claude Desktop/Code, via their own
 # permission-prompt UI; NOT automatically true here). _strip_confirm()
 # removes the "confirm" property from every tool's input_schema (it
 # always carries a default and is never in "required" - verified
-# directly against server_loop.py's actual list_tools() output, not
+# directly against baumer_ti2_server.py's actual list_tools() output, not
 # assumed), so the model cannot request it. _confirm_real_hardware_action()
 # is the harness's own live terminal gate; only on approval does the
 # harness add "confirm": True to the arguments dict it sends to
@@ -85,7 +85,7 @@ KEEP_LAST_N_IMAGES = 2
 
 SYSTEM_PROMPT = """\
 You are an agent operating a Nikon Ti2-E microscope stage and a Baumer \
-camera through an MCP server (mcp_server/server_loop.py), reached via \
+camera through an MCP server (mcp_server/baumer_ti2/baumer_ti2_server.py), reached via \
 tools named get_image, get_pos, move, get_move_history.
 
 Safety rules:
@@ -155,7 +155,7 @@ async def _confirm_real_hardware_action(tool_name: str, tool_input: dict) -> boo
 def _mcp_content_to_anthropic_content(mcp_content: list) -> list[dict]:
     """Convert a CallToolResult's content blocks (TextContent/ImageContent/
     ...) to Anthropic tool_result content blocks. Only text and image are
-    handled - loop_tools.py's 5 tools never return audio/resource blocks.
+    handled - baumer_ti2_tools.py's 5 tools never return audio/resource blocks.
     """
     blocks = []
     for block in mcp_content:
@@ -241,10 +241,10 @@ async def main() -> None:
 
     server_params = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "mcp_server.server_loop"],
+        args=["-m", "mcp_server.baumer_ti2.baumer_ti2_server"],
     )
 
-    print("Connecting to mcp_server/server_loop.py over MCP (stdio)...")
+    print("Connecting to mcp_server/baumer_ti2/baumer_ti2_server.py over MCP (stdio)...")
     async with Client(stdio_client(server_params)) as mcp_client:
         print(f"Connected - MCP protocol version: {mcp_client.protocol_version}")
         mcp_tools = (await mcp_client.list_tools()).tools

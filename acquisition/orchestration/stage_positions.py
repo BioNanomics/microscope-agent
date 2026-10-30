@@ -38,7 +38,7 @@ try:
 except ImportError:
     from acquisition.backends.nis_mock import MockNIS
     nis = MockNIS()
-    # stderr, not stdout - this module is imported (via loop_tools.py) by mcp_server/server_loop.py,
+    # stderr, not stdout - this module is imported (via baumer_ti2_tools.py) by mcp_server/baumer_ti2/baumer_ti2_server.py,
     # whose stdout is the MCP stdio JSON-RPC channel; anything else written
     # there corrupts the protocol stream.
     print(

@@ -296,8 +296,8 @@ def test_run_stops_at_the_runtime_cap(tmp_path, write_frame):
 
 def test_default_capture_goes_through_get_image(monkeypatch, tmp_path):
     calls = []
-    from mcp_server import loop_tools
-    monkeypatch.setattr(loop_tools, "get_image", lambda **kw: (calls.append(kw), ({"image": "x.png"}, None))[1])
+    from mcp_server.baumer_ti2 import baumer_ti2_tools
+    monkeypatch.setattr(baumer_ti2_tools, "get_image", lambda **kw: (calls.append(kw), ({"image": "x.png"}, None))[1])
     cap = sc._default_capture(sc.TimelapseConfig(backend="mock"))
     assert cap() == {"image": "x.png"} and calls[0]["confirm"] is False and calls[0]["backend"] == "mock"
     sc._default_capture(sc.TimelapseConfig(backend="sdk"))()
@@ -321,10 +321,10 @@ def test_cli_real_hardware_needs_whole_plan_approval(monkeypatch, capsys):
 
 
 def test_cli_runs_a_short_mock_session(tmp_path, monkeypatch, capsys):
-    from mcp_server import loop_tools
+    from mcp_server.baumer_ti2 import baumer_ti2_tools
     from tests.conftest import make_blob_frame, save_frame
     frame = save_frame(make_blob_frame(), tmp_path / "f.png")
-    monkeypatch.setattr(loop_tools, "get_image", lambda **kw: ({"image": str(frame), "frame_id": 1, "position": {}}, None))
+    monkeypatch.setattr(baumer_ti2_tools, "get_image", lambda **kw: ({"image": str(frame), "frame_id": 1, "position": {}}, None))
     events = tmp_path / "ev.jsonl"
     assert sc.main(["--max-captures", "2", "--slow", "0.01", "--burst", "0.01", "--events", str(events)]) == 0
     assert "done: max_captures; 2 captures" in capsys.readouterr().out and events.exists()
@@ -340,10 +340,10 @@ def test_cli_wires_up_the_model_trigger(tmp_path, monkeypatch):
         def __call__(self, *a):
             return None
 
-    from mcp_server import loop_tools
+    from mcp_server.baumer_ti2 import baumer_ti2_tools
     from tests.conftest import make_blob_frame, save_frame
     frame = save_frame(make_blob_frame(), tmp_path / "f.png")
-    monkeypatch.setattr(loop_tools, "get_image", lambda **kw: ({"image": str(frame), "frame_id": 1, "position": {}}, None))
+    monkeypatch.setattr(baumer_ti2_tools, "get_image", lambda **kw: ({"image": str(frame), "frame_id": 1, "position": {}}, None))
     monkeypatch.setattr(mt, "ModelTrigger", FakeTrigger)
     sc.main(["--max-captures", "1", "--slow", "0.01", "--burst", "0.01", "--model-trigger",
              "--model-max-calls", "7", "--events", str(tmp_path / "e.jsonl")])

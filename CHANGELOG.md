@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ## [Unreleased]
 
+### Changed
+- The two MCP servers now live in folders named after what they drive:
+  `mcp_server/baumer_ti2/` (`baumer_ti2_server.py`, `baumer_ti2_tools.py`;
+  was `server_loop.py`, `loop_tools.py`) and `mcp_server/nis/`
+  (`nis_server.py`, `nis_tools.py`; was `server_nis.py`, `nis_tools.py`).
+  New commands `baumer-ti2-mcp` and `nis-mcp`; the old `confocal-mcp` and
+  `confocal-mcp-nis` still work. Tool names are unchanged.
+
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
   surveyed by `aml18_survey`: neurons-only opening, brightfield with RFP glow,
