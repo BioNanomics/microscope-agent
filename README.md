@@ -72,18 +72,22 @@ python -m timelapse.frame_audit FRAME_DIR --timestamps times.csv --around 25h --
 ## NIS bridge (`nis-mcp`) - status, moves, objective and capture tested on the scope; ND runs not yet
 
 A separate MCP server for what only NIS-Elements can do: the AX confocal
-lasers and saved ND experiments. A JOBS Python task inside NIS
-(`packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`) serves NIS macro calls on
-`127.0.0.1:8766`. The `nis-mcp` server talks to it and adds a
-confirm gate, the e-stop and a capture-folder rule. `baumer_ti2_server` is
-unchanged. Setup, safety rules and the on-scope test plan:
+lasers and saved ND experiments. It is its own package,
+[`packages/nis-elements-mcp`](packages/nis-elements-mcp/README.md), which any
+project can install; this repo depends on it from that folder. A JOBS Python
+task inside NIS (`nis-mcp-bridge job-file` prints which file to paste) serves
+NIS macro calls on `127.0.0.1:8766`. The server talks to it and adds a
+confirm gate, limits, the e-stop and a capture-folder rule.
+`baumer_ti2_server` is unchanged. On-scope test plan and results:
 [docs/nis-bridge.md](docs/nis-bridge.md).
 
 ```
-python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs
+confocal-mcp-nis                                         # the MCP server, with this repo's folders (logs/nis, data/NIS/captures)
+python -m mcp_server.nis.nis_server                      # same, from a source checkout
+nis-mcp                                                  # the package's server, default folders under ~/nis-mcp
+python -m acquisition.backends.nis_bridge status        # by hand, while the bridge job runs (or: nis-mcp-bridge status)
+python -m acquisition.backends.nis_bridge shutdown      # the only safe way to stop the bridge job
 python -m acquisition.nis_monitor                        # live view: status + every action (logs/nis/)
-nis-mcp                                                  # the MCP server (old name: confocal-mcp-nis)
-python -m mcp_server.nis.nis_server                          # same, from a source checkout
 ```
 
 MCP client config for a source checkout (adjust the path to this repo's venv):

@@ -33,6 +33,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
   for the bridge job; a stop engaged in the old `~/.confocal-mcp/ESTOP` is
   moved there on first start. The old `CONFOCAL_*` switch names still work
   in this repo. `nis_port_probe.py` no longer hard-codes a user path.
+- `nis-elements-mcp` 0.1.0 has its own README (setup in NIS, install into
+  another project, safety rules, settings), CHANGELOG and MIT LICENSE, and the
+  commands `nis-mcp-bridge` (with `job-file`), `nis-mcp-estop` and
+  `nis-mcp-monitor`. CI installs the package on its own and tests it on
+  Windows and Ubuntu.
 
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
