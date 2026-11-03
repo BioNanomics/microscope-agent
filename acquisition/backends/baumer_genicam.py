@@ -15,8 +15,8 @@
 #
 # 2026-08-17: now the PRIMARY capture path by deliberate decision - the
 # team decided against capturing through NIS-Elements/Jobs at all (see
-# mcp_server/loop_tools.py's header comment), so this module's capture()
-# is what mcp_server.loop_tools.get_image() actually calls. Whatever is
+# mcp_server/baumer_ti2/baumer_ti2_tools.py's header comment), so this module's capture()
+# is what mcp_server.baumer_ti2.baumer_ti2_tools.get_image() actually calls. Whatever is
 # optically coupled to wherever this camera is physically mounted is
 # what gets captured - that's a hardware/alignment decision made outside
 # this code, not something this module controls.

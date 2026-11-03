@@ -191,7 +191,7 @@ def test_read_during_move_script_runs_and_logs_events(scripts, monkeypatch, caps
 def entry(monkeypatch, tmp_path):
     monkeypatch.setattr(nis_mock.time, "sleep", lambda s: None)
     monkeypatch.setattr(estop, "ESTOP_PATH", tmp_path / "ESTOP")
-    monkeypatch.setenv("CONFOCAL_NO_ESTOP_PANEL", "1")
+    monkeypatch.setenv("NIS_NO_ESTOP_PANEL", "1")
     monkeypatch.setenv("CONFOCAL_MCP_DATA_DIR", str(tmp_path))
     from acquisition import paths
     paths.data_root.cache_clear()
@@ -218,6 +218,7 @@ def test_nis_sdk_demo(fake_ti2, entry, capsys):
 
 def test_estop_cli_entry_point(entry, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["estop", "status"])
+    monkeypatch.delitem(sys.modules, 'acquisition.estop', raising=False)       # run it as a fresh `python -m` would
     runpy.run_module("acquisition.estop", run_name="__main__")
     assert "clear" in capsys.readouterr().out
 

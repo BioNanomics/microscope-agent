@@ -105,13 +105,13 @@ class TimelapseConfig:
 
 
 def _default_capture(config: TimelapseConfig) -> CaptureFn:
-    """Capture via loop_tools.get_image(). For backend='sdk' this supplies
+    """Capture via baumer_ti2_tools.get_image(). For backend='sdk' this supplies
     confirm=True - main() has already obtained the one-time human approval
     for the whole run before this is ever constructed."""
-    from mcp_server import loop_tools
+    from mcp_server.baumer_ti2 import baumer_ti2_tools
 
     def capture() -> dict:
-        metadata, _preview = loop_tools.get_image(
+        metadata, _preview = baumer_ti2_tools.get_image(
             backend=config.backend,
             confirm=(config.backend == "sdk"),
             max_dimension=config.preview_max_dimension,

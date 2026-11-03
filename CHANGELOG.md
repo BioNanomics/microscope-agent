@@ -6,6 +6,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ## [Unreleased]
 
+### Removed
+- Everything NIS-Elements. The `nis-elements-mcp` package (with its history)
+  moved to [BioNanomics/nis-elements-mcp](https://github.com/BioNanomics/nis-elements-mcp),
+  under `bridge/`. Gone from here: `packages/`, `mcp_server/nis/`,
+  `acquisition/_nis_settings.py`, `acquisition/nis_events.py`,
+  `acquisition/nis_monitor.py`, `acquisition/backends/nis_bridge.py`,
+  `acquisition/calibration/nis_port_probe.py`, `docs/nis-bridge.md`, the
+  `confocal-mcp-nis` command and the package's CI job. `nis_sdk.py` and
+  `nis_mock.py` stay: they drive the Ti2 stage, not NIS-Elements.
+- `acquisition/estop.py` and `acquisition/estop_panel.py` are real modules
+  again (not forwarders to the package), with their tests in `tests/`. They
+  keep the same e-stop file (`NIS_ESTOP_FILE`, else `~/.nis-mcp/ESTOP`) and
+  panel mutex as nis-elements-mcp, so one STOP still stops both. A stop left
+  in the pre-2026-10-30 file `~/.confocal-mcp/ESTOP` is no longer moved over.
+
+### Changed
+- The two MCP servers now live in folders named after what they drive:
+  `mcp_server/baumer_ti2/` (`baumer_ti2_server.py`, `baumer_ti2_tools.py`;
+  was `server_loop.py`, `loop_tools.py`) and `mcp_server/nis/`
+  (`nis_server.py`, `nis_tools.py`; was `server_nis.py`, `nis_tools.py`).
+  New commands `baumer-ti2-mcp` and `nis-mcp`; the old `confocal-mcp` and
+  `confocal-mcp-nis` still work. Tool names are unchanged.
+- The NIS-Elements MCP server is now its own package, `nis-elements-mcp`, in
+  `packages/nis-elements-mcp/` (server, tools, bridge client, bridge job,
+  e-stop and STOP panel, event log, monitor, and their tests). This repo
+  depends on it from that folder. The old modules (`acquisition/estop.py`,
+  `acquisition/nis_*.py`, `acquisition/backends/nis_bridge.py`,
+  `acquisition/nis_bridge/bridge_job.py`, `mcp_server/nis/`) forward to the
+  package, so imports and `python -m` commands are unchanged; this repo keeps
+  its NIS logs and captures in `logs/nis` and `data/NIS/captures`.
+  **Paste `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
+  into the NIS JOBS task from now on.** `nis-mcp` now comes from the package.
+- `nis-elements-mcp` reads all its settings from `NIS_*` environment variables
+  (`settings.py`): `NIS_BRIDGE_HOST/PORT`, `NIS_CAPTURE_DIR`, `NIS_LOG_DIR`,
+  `NIS_ESTOP_FILE`, `NIS_ALLOWED_OBJECTIVES` (default 4,10),
+  `NIS_ALLOWED_EXPERIMENTS` (new: optional list of ND experiment names),
+  `NIS_MAX_STEP_UM` (default 1000), `NIS_NO_ESTOP_PANEL`, `NIS_NO_MONITOR`.
+  The limits are now also checked in the client before a request is sent.
+  **The e-stop file moved to `~/.nis-mcp/ESTOP`** for every process here and
+  for the bridge job; a stop engaged in the old `~/.confocal-mcp/ESTOP` is
+  moved there on first start. The old `CONFOCAL_*` switch names still work
+  in this repo. `nis_port_probe.py` no longer hard-codes a user path.
+- `nis-elements-mcp` 0.1.0 has its own README (setup in NIS, install into
+  another project, safety rules, settings), CHANGELOG and MIT LICENSE, and the
+  commands `nis-mcp-bridge` (with `job-file`), `nis-mcp-estop` and
+  `nis-mcp-monitor`. CI installs the package on its own and tests it on
+  Windows and Ubuntu.
+
+### Removed
+- `acquisition/nis_bridge/` (the old `bridge_job.py` forwarder). It looked
+  like the bridge job but failed inside NIS when pasted. The only bridge job
+  is now `packages/nis-elements-mcp/src/nis_elements_mcp/nis_bridge_job.py`
+  (`nis-mcp-bridge job-file` prints the path).
+
 ### Added
 - `analysis/worm_short.py` - C. elegans Short from an AML18 time-lapse
   surveyed by `aml18_survey`: neurons-only opening, brightfield with RFP glow,

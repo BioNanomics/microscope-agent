@@ -1,4 +1,4 @@
-# End-to-end over the real protocol: spawn `python -m mcp_server.server_loop`
+# End-to-end over the real protocol: spawn `python -m mcp_server.baumer_ti2.baumer_ti2_server`
 # as a subprocess (exactly what Claude Desktop/Code and harness/mcp_agent.py
 # do), talk MCP to it over stdio, and exercise every tool against the mock
 # backends. No hardware, no model. Guards two things the in-process tests
@@ -23,9 +23,9 @@ def _server_params(data_dir: Path, frame: Path) -> StdioServerParameters:
     env.update({
         "CONFOCAL_MCP_DATA_DIR": str(data_dir),
         "CONFOCAL_MOCK_FRAME_PATH": str(frame),
-        "CONFOCAL_NO_ESTOP_PANEL": "1",   # headless: don't try to open the STOP window
+        "NIS_NO_ESTOP_PANEL": "1",   # headless: don't try to open the STOP window
     })
-    return StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server_loop"], env=env)
+    return StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.baumer_ti2.baumer_ti2_server"], env=env)
 
 
 def _text(result) -> dict:

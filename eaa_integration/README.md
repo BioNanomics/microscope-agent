@@ -1,7 +1,7 @@
 # EAA integration (isolated)
 
 This folder wraps the main project's existing, **unmodified** MCP server
-(`../mcp_server/server_loop.py`) as a tool inside
+(`../mcp_server/baumer_ti2/baumer_ti2_server.py`) as a tool inside
 [EAA (Experiment Automation Agents)](https://github.com/AdvancedPhotonSource/EAA).
 
 Everything EAA-related lives here - its own venv, its own dependencies,
@@ -59,8 +59,8 @@ the terminal just runs the process and prints log lines. `--webui` is
 opt-in specifically so the already-verified terminal flow keeps working
 unchanged when you don't pass it.
 
-This spawns `../mcp_server/server_loop.py` as a subprocess, using the
-**main project's own `.venv`** (not this folder's) - `server_loop.py`
+This spawns `../mcp_server/baumer_ti2/baumer_ti2_server.py` as a subprocess, using the
+**main project's own `.venv`** (not this folder's) - `baumer_ti2_server.py`
 needs `mcp`/`PIL`/`harvesters`/`pywin32`, none of which are installed
 here. Make sure the main project's `.venv` exists and has its
 dependencies installed first (`../requirements.txt`).
@@ -79,9 +79,9 @@ a child-process tree kill + `os._exit()`. Without that, two things bite
 on Windows: EAA's `MCPTool.__del__` deadlocks in anyio at interpreter
 shutdown (the process won't close), and the MCP server - launched through
 the main venv's redirector `python.exe` - gets orphaned, leaving a stray
-`server_loop.py` (and its camera/NIS handles) running. If you ever do
+`baumer_ti2_server.py` (and its camera/NIS handles) running. If you ever do
 find a leftover, `taskkill /F /T /IM python.exe` clears it, or kill just
-the `server_loop.py` PID from Task Manager.
+the `baumer_ti2_server.py` PID from Task Manager.
 
 ## Safety: how this differs from `../harness/agent.py` and `../harness/mcp_agent.py`
 
@@ -95,7 +95,7 @@ through this connection - including harmless mock reads like `get_pos`.
 Every tool call pauses for a `[y/N]` terminal prompt. Simpler, safer by
 default, but naggier. If that becomes a problem, the fix is a thin
 proxy MCP server in this same folder that replicates the selective gate
-the other two harnesses already use - not a change to `server_loop.py`
+the other two harnesses already use - not a change to `baumer_ti2_server.py`
 itself.
 
 The task manager's system prompt also explicitly tells the model to
@@ -128,7 +128,7 @@ will fail loudly instead of quietly widening what the model can touch.
 
 - `eaa-core==1.0.0` installs cleanly in its own venv, pulling in its own
   `mcp==1.29.1` with zero conflict with the main project's `mcp==2.0.0`.
-- `MCPTool` successfully spawns `server_loop.py` as a real subprocess
+- `MCPTool` successfully spawns `baumer_ti2_server.py` as a real subprocess
   (via the main project's venv) and connects to it.
 - `ConfocalTaskManager`'s resolved `assistant_system_message` correctly
   contains EAA's own default prompt **plus** the appended microscope
@@ -138,7 +138,7 @@ will fail loudly instead of quietly widening what the model can touch.
 - **A full live conversation, with a real `OPENAI_API_KEY` and
   `gpt-4o-mini`, end to end**: the model correctly chose to call
   `get_pos(backend="mock")`, the approval prompt fired and was
-  approved, the real MCP call executed against the real `server_loop.py`
+  approved, the real MCP call executed against the real `baumer_ti2_server.py`
   subprocess, and the model gave a correct final answer using the real
   returned data (`x=0.0, y=0.0, z=0.0`, matching the mock stage's actual
   state).

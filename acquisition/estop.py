@@ -38,6 +38,12 @@
 # have. ESTOP_PATH is absolute and identical for every process on the
 # machine.
 #
+# ONE STOP FOR THE WHOLE MICROSCOPE. ESTOP_PATH is the same file the
+# nis-elements-mcp servers check (NIS_ESTOP_FILE, else ~/.nis-mcp/ESTOP),
+# and PANEL_MUTEX is the same name its STOP panel holds. So one STOP button
+# stops the Ti2 scripts here and anything driving NIS, and only one panel
+# is ever on screen, whichever project opened it.
+#
 # FAIL SAFE: if the state cannot be determined (unreadable directory, odd
 # filesystem error), check() treats the stop as ENGAGED. An e-stop that
 # fails open is not a safety device. The cost of the opposite error is a
@@ -69,13 +75,13 @@ from pathlib import Path
 
 #: Absolute and machine-wide. Never derive this from the working
 #: directory - see the module header.
-ESTOP_PATH = Path(os.environ.get("CONFOCAL_ESTOP_FILE",
-                                 Path.home() / ".confocal-mcp" / "ESTOP"))
+ESTOP_PATH: Path = Path(os.environ.get("NIS_ESTOP_FILE", "").strip()
+                        or Path.home() / ".nis-mcp" / "ESTOP")
 
 
 #: Held by the running STOP panel for its whole life, so every process can
 #: tell whether one is already on screen. Windows frees it if the panel dies.
-PANEL_MUTEX = r"Local\confocal-mcp-estop-panel"
+PANEL_MUTEX = r"Local\nis-mcp-estop-panel"
 
 
 class EStopEngaged(RuntimeError):
@@ -165,9 +171,10 @@ def launch_panel() -> None:
 
     Detached, not a child: the panel must outlive this process. Failures
     go to stderr - never stdout, which is the MCP JSON-RPC channel - and
-    never stop the caller. CONFOCAL_NO_ESTOP_PANEL=1 turns it off.
+    never stop the caller. NIS_NO_ESTOP_PANEL=1 (or the older
+    CONFOCAL_NO_ESTOP_PANEL=1) turns it off.
     """
-    if os.environ.get("CONFOCAL_NO_ESTOP_PANEL"):
+    if any(os.environ.get(n, "").strip() for n in ("NIS_NO_ESTOP_PANEL", "CONFOCAL_NO_ESTOP_PANEL")):
         return
     try:
         if panel_running():

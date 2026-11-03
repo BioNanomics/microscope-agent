@@ -1,6 +1,6 @@
 # The STOP panel against a fake tkinter (no display, no tk needed), plus the
-# Windows single-instance mutex paths of the panel and the NIS monitor against
-# a fake kernel32, so they run on a Linux CI runner too.
+# Windows single-instance mutex paths of the panel and of estop against a
+# fake kernel32, so they run on a Linux CI runner too.
 import ctypes
 import importlib
 import sys
@@ -9,7 +9,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from acquisition import estop, nis_monitor
+from acquisition import estop
 
 
 class Widget:
@@ -233,67 +233,10 @@ def test_main_explains_a_missing_display(panel_mod, monkeypatch, capsys):
     assert exc.value.code == 1 and "no display available" in capsys.readouterr().err
 
 
-# ---- Windows mutex probes in estop and nis_monitor ----------------------------------
+# ---- Windows mutex probe in estop ---------------------------------------------------
 
 def test_estop_panel_running_reads_the_windows_mutex(monkeypatch):
     calls = fake_kernel(monkeypatch, exists=True)
     assert estop.panel_running() is True and ("close", 99) in calls
     fake_kernel(monkeypatch, exists=False)
     assert estop.panel_running() is False
-
-
-def test_monitor_running_reads_the_windows_mutex(monkeypatch):
-    calls = fake_kernel(monkeypatch, exists=True)
-    assert nis_monitor.monitor_running() is True and ("close", 99) in calls
-    fake_kernel(monkeypatch, exists=False)
-    assert nis_monitor.monitor_running() is False
-
-
-def test_monitor_mutex_is_single_instance(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "linux")
-    assert nis_monitor._hold_mutex() is True
-    fake_kernel(monkeypatch, exists=False, last_error=0)
-    assert nis_monitor._hold_mutex() == 7
-    fake_kernel(monkeypatch, exists=True, last_error=183)
-    assert nis_monitor._hold_mutex() is None
-
-
-def test_monitor_main_refuses_a_second_window(monkeypatch):
-    monkeypatch.setattr(nis_monitor, "_hold_mutex", lambda: None)
-    monkeypatch.setattr(sys, "argv", ["nis_monitor"])
-    with pytest.raises(SystemExit, match="already open"):
-        nis_monitor.main()
-
-
-def test_monitor_main_loop_runs_until_interrupted(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(nis_monitor, "_hold_mutex", lambda: 1)
-    monkeypatch.setattr(nis_monitor.nis_events, "events_dir", lambda: tmp_path / "ev")
-    monkeypatch.setattr(nis_monitor, "fetch_status", lambda url: ("down", None))
-    monkeypatch.setattr(estop, "ESTOP_PATH", tmp_path / "ESTOP")
-    sleeps = []
-
-    def sleep(s):
-        sleeps.append(s)
-        if len(sleeps) >= 2:
-            raise KeyboardInterrupt
-
-    monkeypatch.setattr(nis_monitor.time, "sleep", sleep)
-    monkeypatch.setattr(sys, "argv", ["nis_monitor", "--interval", "0.5"])
-    nis_monitor.main()
-    assert sleeps == [0.5, 0.5] and "NIS monitor" in capsys.readouterr().out
-
-
-def test_monitor_main_starts_a_new_log_after_midnight(monkeypatch, tmp_path, capsys):
-    import datetime
-    days = iter([datetime.date(2026, 10, 15), datetime.date(2026, 10, 15), datetime.date(2026, 10, 16),
-                 datetime.date(2026, 10, 16), datetime.date(2026, 10, 16)])
-    monkeypatch.setattr(nis_monitor, "_hold_mutex", lambda: 1)
-    monkeypatch.setattr(nis_monitor.nis_events, "events_dir", lambda: tmp_path / "ev")
-    monkeypatch.setattr(nis_monitor.nis_events, "events_path",
-                        lambda day=None: tmp_path / f"{next(days).isoformat()}.jsonl")
-    monkeypatch.setattr(nis_monitor, "fetch_status", lambda url: ("down", None))
-    monkeypatch.setattr(estop, "ESTOP_PATH", tmp_path / "ESTOP")
-    n = []
-    monkeypatch.setattr(nis_monitor.time, "sleep", lambda s: (n.append(1), n.__len__() > 1 and (_ for _ in ()).throw(KeyboardInterrupt))[0])
-    monkeypatch.setattr(sys, "argv", ["nis_monitor"])
-    nis_monitor.main()

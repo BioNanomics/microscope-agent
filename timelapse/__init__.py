@@ -8,9 +8,9 @@
 #                         gaps, global intensity jumps and XY shifts, to
 #                         separate "filming error" from "biological change"
 #   scheduler.py        - the slow-loop / burst-mode acquisition loop that
-#                         drives loop_tools.get_image() using the detector
+#                         drives baumer_ti2_tools.get_image() using the detector
 #
 # None of this is an MCP tool. The model-facing surface stays at 5 tools
-# (see mcp_server/loop_tools.py's header); this package sits *beside* the
+# (see mcp_server/baumer_ti2/baumer_ti2_tools.py's header); this package sits *beside* the
 # tools and calls get_image() itself.
 # ------------------------------------------------------------

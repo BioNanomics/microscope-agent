@@ -12,7 +12,7 @@ tools with Claude:
 
 | | `harness/agent.py` ("Plan B") | `harness/mcp_agent.py` ("Plan A", this doc) |
 |---|---|---|
-| How it calls the tools | Imports `mcp_server/loop_tools.py`'s functions directly, in-process | Talks real MCP protocol to `mcp_server/server_loop.py`, running as a **separate subprocess** |
+| How it calls the tools | Imports `mcp_server/baumer_ti2/baumer_ti2_tools.py`'s functions directly, in-process | Talks real MCP protocol to `mcp_server/baumer_ti2/baumer_ti2_server.py`, running as a **separate subprocess** |
 | Needs the `mcp` SDK client | No | Yes (`mcp.client`) |
 | Works if the harness and the microscope server run on different machines | No | Yes (with a different transport than stdio - see below) |
 | Exercises the same server Claude Desktop/Code connect to | No | Yes |
@@ -22,7 +22,7 @@ Neither is "the real one" - they're both real, tested implementations,
 kept side by side on purpose. Pick `agent.py` when you just want the
 simplest thing that works on one machine. Pick `mcp_agent.py` when you
 specifically want the MCP protocol boundary - e.g. testing
-`server_loop.py` itself, or a future setup where the harness and the
+`baumer_ti2_server.py` itself, or a future setup where the harness and the
 microscope PC aren't the same machine.
 
 ## What MCP actually is, briefly
@@ -34,16 +34,16 @@ about how you talk to an LLM - that's a completely separate concern.
 Concretely, in this repo:
 
 ```
-harness/mcp_agent.py                    mcp_server/server_loop.py
+harness/mcp_agent.py                    mcp_server/baumer_ti2/baumer_ti2_server.py
         (MCP client)   <--- stdio --->        (MCP server)
               |                                     |
-              |                                     +-- loop_tools.get_image
-        talks to Claude                             +-- loop_tools.get_pos
-        (Anthropic API,                             +-- loop_tools.move
-         unrelated to MCP)                           +-- loop_tools.get_move_history
+              |                                     +-- baumer_ti2_tools.get_image
+        talks to Claude                             +-- baumer_ti2_tools.get_pos
+        (Anthropic API,                             +-- baumer_ti2_tools.move
+         unrelated to MCP)                           +-- baumer_ti2_tools.get_move_history
 ```
 
-`mcp_agent.py` spawns `python -m mcp_server.server_loop` as a child
+`mcp_agent.py` spawns `python -m mcp_server.baumer_ti2.baumer_ti2_server` as a child
 process and exchanges newline-delimited JSON-RPC messages with it over
 that process's stdin/stdout - the exact same mechanism Claude
 Desktop/Code use when you configure this project as an MCP server for
@@ -75,7 +75,7 @@ implement the same way. The current, correct pattern is the unified
 from mcp.client import Client
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
-params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server_loop"])
+params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.baumer_ti2.baumer_ti2_server"])
 async with Client(stdio_client(params)) as client:
     print(client.protocol_version)   # "2026-07-28"
     tools = await client.list_tools()
@@ -111,7 +111,7 @@ loop has no such dependency.
 
 ## The real-hardware approval gate
 
-`loop_tools.get_image()`/`move()` (in `mcp_server/loop_tools.py`) gate
+`baumer_ti2_tools.get_image()`/`move()` (in `mcp_server/baumer_ti2/baumer_ti2_tools.py`) gate
 any real-hardware action behind a `confirm=True` parameter, on the
 assumption that whatever is calling them already obtained a human's
 approval. That assumption is true when the caller is Claude
@@ -123,7 +123,7 @@ So this file does two things together, and both matter:
 
 1. **`_strip_confirm()`** removes the `"confirm"` property from every
    tool's `input_schema` before it's shown to Claude - verified directly
-   against `server_loop.py`'s real `list_tools()` output (see
+   against `baumer_ti2_server.py`'s real `list_tools()` output (see
    `_mcp_tools_to_anthropic_tools`'s docstring), not assumed. Claude
    literally cannot request `confirm=True`; the field doesn't exist in
    the tool definition it sees.
@@ -165,7 +165,7 @@ MCP tool results (`CallToolResult.content`) are typed content blocks -
 |---|---|
 | `TextContent(text=...)` | `{"type": "text", "text": ...}` |
 | `ImageContent(data=..., mime_type=...)` | `{"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": data}}` |
-| anything else (audio, resource links, ...) | a text block noting the unsupported type - `loop_tools.py`'s 5 tools never actually produce these, so this is a defensive fallback, not a real code path |
+| anything else (audio, resource links, ...) | a text block noting the unsupported type - `baumer_ti2_tools.py`'s 5 tools never actually produce these, so this is a defensive fallback, not a real code path |
 
 Conveniently, MCP's `Tool.input_schema` is already plain JSON Schema in
 the same shape Anthropic's tool `input_schema` expects, so
@@ -177,7 +177,7 @@ translation.
 
 Building this harness surfaced a real, pre-existing bug:
 `acquisition/backends/nis_mock.py`'s `XY_Move`/`Z_Move` used a plain
-`print(...)` (stdout) to log simulated moves. When `server_loop.py` runs
+`print(...)` (stdout) to log simulated moves. When `baumer_ti2_server.py` runs
 as an MCP stdio server, **stdout is the JSON-RPC channel** -
 `stage_positions.py` already documented this exact constraint for its
 own startup message, but `nis_mock.py`'s move logging never followed

@@ -1,11 +1,11 @@
 # agent.py
 # ------------------------------------------------------------
 # Minimal interactive harness loop: calls Claude directly (Anthropic
-# API), driving mcp_server/loop_tools.py's 4 functions as tools. This is
+# API), driving mcp_server/baumer_ti2/baumer_ti2_tools.py's 4 functions as tools. This is
 # Plan B from the harness design discussion - it does NOT go through
-# mcp_server/server_loop.py's MCP/stdio protocol at all. Since this
-# module lives in the same codebase as loop_tools.py, it just imports
-# and calls those functions directly as plain Python. server_loop.py is
+# mcp_server/baumer_ti2/baumer_ti2_server.py's MCP/stdio protocol at all. Since this
+# module lives in the same codebase as baumer_ti2_tools.py, it just imports
+# and calls those functions directly as plain Python. baumer_ti2_server.py is
 # untouched and still works independently for Claude Desktop/Code - this
 # is a second, separate way to drive the same underlying tool functions,
 # not a replacement.
@@ -17,7 +17,7 @@
 # real-hardware action (see next paragraph) - and avoiding a beta SDK
 # dependency for the first version of this loop.
 #
-# WHY "confirm" IS NOT A MODEL-SETTABLE TOOL PARAMETER HERE: loop_tools'
+# WHY "confirm" IS NOT A MODEL-SETTABLE TOOL PARAMETER HERE: baumer_ti2_tools'
 # get_image()/move() gate real hardware behind confirm=True, on the
 # assumption that whatever's calling them already got a human's
 # approval - true when the caller is Claude Desktop/Code (their own
@@ -33,7 +33,7 @@
 #
 # WHY backend DEFAULTS TO "mock" IN THE SYSTEM PROMPT: real hardware
 # should be something the model reaches for deliberately, not a default
-# it falls into - matches loop_tools.py's own backend="mock" defaults.
+# it falls into - matches baumer_ti2_tools.py's own backend="mock" defaults.
 #
 # Run (from the repo root, with .venv activated, ANTHROPIC_API_KEY set
 # in a .env file at the repo root, in the environment, or via
@@ -48,7 +48,7 @@ import anthropic
 from dotenv import load_dotenv
 
 from harness.context import prune_context_images
-from mcp_server import loop_tools
+from mcp_server.baumer_ti2 import baumer_ti2_tools
 
 load_dotenv()  # reads .env (repo root, gitignored) into the process environment
 
@@ -223,7 +223,7 @@ def _execute_tool(name: str, tool_input: dict) -> tuple[list[dict], bool]:
                 if not _confirm_real_hardware_action(name, tool_input):
                     return _text_content("User declined this real-hardware capture. Not executed."), True
                 tool_input["confirm"] = True
-            metadata, image = loop_tools.get_image(**tool_input)
+            metadata, image = baumer_ti2_tools.get_image(**tool_input)
             image_content = image.to_image_content()
             return [
                 {"type": "text", "text": json.dumps(metadata)},
@@ -238,17 +238,17 @@ def _execute_tool(name: str, tool_input: dict) -> tuple[list[dict], bool]:
             ], False
 
         if name == "get_pos":
-            return _text_content(json.dumps(loop_tools.get_pos(**tool_input))), False
+            return _text_content(json.dumps(baumer_ti2_tools.get_pos(**tool_input))), False
 
         if name == "move":
             if tool_input.get("backend", "mock") == "sdk":
                 if not _confirm_real_hardware_action(name, tool_input):
                     return _text_content("User declined this real-hardware move. Not executed."), True
                 tool_input["confirm"] = True
-            return _text_content(json.dumps(loop_tools.move(**tool_input))), False
+            return _text_content(json.dumps(baumer_ti2_tools.move(**tool_input))), False
 
         if name == "get_move_history":
-            return _text_content(json.dumps(loop_tools.get_move_history(**tool_input))), False
+            return _text_content(json.dumps(baumer_ti2_tools.get_move_history(**tool_input))), False
 
         return _text_content(f"Unknown tool: {name}"), True
     except (ValueError, PermissionError, KeyError) as exc:

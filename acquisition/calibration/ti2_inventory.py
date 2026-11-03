@@ -115,7 +115,7 @@ def inventory(sdk: Any = None) -> list[dict]:
     Pass an existing NISSdk to reuse its COM thread; omit it to build one.
     NISSdk is imported lazily so this module stays importable without
     pywin32 or the Ti2 SDK installed (same pattern as the lazy backend
-    imports in mcp_server/loop_tools.py).
+    imports in mcp_server/baumer_ti2/baumer_ti2_tools.py).
     """
     if sdk is None:
         from acquisition.backends.nis_sdk import NISSdk
