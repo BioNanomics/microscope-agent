@@ -1,19 +1,10 @@
-import ctypes
-import http.server
 import json
 import sys
-import threading
-import time
-import types
-import urllib.request
-from types import SimpleNamespace as NS
 
 import pytest
 
-from acquisition import estop
 from acquisition.calibration import ti2_config, ti2_inventory
 from tests.fakes import fake_ti2  # noqa: F401  (fixture)
-from nis_elements_mcp.testing import FakeNIS
 
 
 def make_setting(name, control, value=1, lower=0, higher=10, unit="u", enabled=True, long_name=None):
@@ -227,78 +218,3 @@ def test_config_cli_default_output_path(scope, tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     run_main(monkeypatch, "save")
     assert list((tmp_path / "protocols").glob("optical_config_*.json"))
-
-
-# ---- nis_port_probe (runs inside NIS; here against the fake DLL) -----------------
-
-@pytest.fixture
-def probe(monkeypatch, tmp_path):
-    dll = FakeNIS()
-    limjob = types.ModuleType("limjob")                       # NIS's job API; the probe annotates with its types
-    limjob.Image = limjob.JobParam = limjob.MacroParam = limjob.RunContext = object
-    monkeypatch.setitem(sys.modules, "limjob", limjob)
-    monkeypatch.setattr(ctypes, "cdll", NS(g5_regprocs=dll), raising=False)
-    sys.modules.pop("acquisition.calibration.nis_port_probe", None)
-    import importlib
-    mod = importlib.import_module("acquisition.calibration.nis_port_probe")
-    monkeypatch.setattr(mod, "ESTOP", str(tmp_path / "ESTOP"))
-    yield mod, dll
-    sys.modules.pop("acquisition.calibration.nis_port_probe", None)
-
-
-def test_probe_status(probe):
-    mod, dll = probe
-    s = mod.status()
-    assert s["xy_um"] == [100.0, 200.0] and s["z_um"] == 4619.0 and s["nosepiece_position"] == 1
-    assert s["nosepiece_objectives"] == {i: n for i, n in dll.objectives.items()}
-
-
-def test_probe_move_is_capped_and_blocked_by_estop(probe, tmp_path):
-    mod, dll = probe
-    r = mod.move(50, -20)
-    assert r["after_um"] == [150.0, 180.0]
-    assert "refused" in mod.move(1000.1, 0)["error"]
-    (tmp_path / "ESTOP").write_text("{}")
-    assert "e-stop" in mod.move(1, 0)["error"] and "e-stop" in mod.objective("Plan Fluor 10x Ph1 DLL")["error"]
-
-
-def test_probe_objective_allow_list(probe):
-    mod, dll = probe
-    assert "allowed" in mod.objective("Plan Apo 60x Oil")["error"]
-    r = mod.objective("Plan Fluor 10x Ph1 DLL")
-    assert r["after"] == "Plan Fluor 10x Ph1 DLL" and r["rc"] == 1
-
-
-def test_probe_serves_the_three_endpoints_from_run(probe, monkeypatch, tmp_path):
-    mod, dll = probe
-    servers = []
-
-    class Rec(http.server.ThreadingHTTPServer):
-        def __init__(self, *a, **k):
-            super().__init__(("127.0.0.1", 0), a[1])
-            servers.append(self)
-
-    monkeypatch.setattr(mod.http.server, "ThreadingHTTPServer", Rec)
-    done = threading.Event()
-    ctx = NS(shouldAbort=lambda: done.is_set())
-    t = threading.Thread(target=mod.run, args=((), None, None, ctx), daemon=True)
-    t.start()
-    deadline = time.time() + 5
-    while not servers and time.time() < deadline:
-        time.sleep(0.01)
-    assert servers, "the probe never started its server"
-    base = f"http://127.0.0.1:{servers[0].server_address[1]}"
-
-    def get(path):
-        with urllib.request.urlopen(base + path, timeout=5) as r:
-            return json.loads(r.read())
-
-    assert get("/status")["xy_um"] == [100.0, 200.0]
-    assert get("/move?dx=10&dy=0")["after_um"][0] == 110.0
-    assert "allowed" in get("/objective?name=Plan%20Apo%2060x%20Oil")["error"]
-    assert "use /status" in get("/nothing")["error"]
-    dll.StgGetPosXY = lambda *a: (_ for _ in ()).throw(RuntimeError("dll fell over"))
-    assert "RuntimeError" in get("/status")["error"]               # a failing call is reported, not fatal
-    done.set()
-    t.join(5)
-    assert not t.is_alive()

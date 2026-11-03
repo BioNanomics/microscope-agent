@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ## [Unreleased]
 
+### Removed
+- Everything NIS-Elements. The `nis-elements-mcp` package (with its history)
+  moved to [BioNanomics/nis-elements-mcp](https://github.com/BioNanomics/nis-elements-mcp),
+  under `bridge/`. Gone from here: `packages/`, `mcp_server/nis/`,
+  `acquisition/_nis_settings.py`, `acquisition/nis_events.py`,
+  `acquisition/nis_monitor.py`, `acquisition/backends/nis_bridge.py`,
+  `acquisition/calibration/nis_port_probe.py`, `docs/nis-bridge.md`, the
+  `confocal-mcp-nis` command and the package's CI job. `nis_sdk.py` and
+  `nis_mock.py` stay: they drive the Ti2 stage, not NIS-Elements.
+- `acquisition/estop.py` and `acquisition/estop_panel.py` are real modules
+  again (not forwarders to the package), with their tests in `tests/`. They
+  keep the same e-stop file (`NIS_ESTOP_FILE`, else `~/.nis-mcp/ESTOP`) and
+  panel mutex as nis-elements-mcp, so one STOP still stops both. A stop left
+  in the pre-2026-10-30 file `~/.confocal-mcp/ESTOP` is no longer moved over.
+
 ### Changed
 - The two MCP servers now live in folders named after what they drive:
   `mcp_server/baumer_ti2/` (`baumer_ti2_server.py`, `baumer_ti2_tools.py`;

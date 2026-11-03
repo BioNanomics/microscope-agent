@@ -31,26 +31,3 @@ jobs:
       # SDK stacks are lazy imports) - fail the build if that regresses.
       # (tests/test_mcp_server.py goes further and actually runs it.)
       - run: python -c "import mcp_server.baumer_ti2.baumer_ti2_server, timelapse.scheduler"
-
-  # The NIS-Elements MCP package on its own: installed (not editable) into a
-  # runner that has nothing else from this repo, on the OS it is used on
-  # (Windows) and on Linux. Its tests run against the installed copy.
-  nis-elements-mcp:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-        python-version: ["3.11", "3.13"]
-    defaults:
-      run:
-        working-directory: packages/nis-elements-mcp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install ".[test]"
-      - run: python -m pytest -v
-      # The installed commands exist and the bridge job file ships with the package.
-      - run: nis-mcp-bridge job-file
-      - run: nis-mcp-estop status

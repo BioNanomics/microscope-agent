@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from nis_elements_mcp import estop
+from acquisition import estop
 
 
 @pytest.fixture
@@ -65,6 +65,9 @@ def test_launch_panel_opt_out_and_already_running(monkeypatch):
     monkeypatch.setenv("NIS_NO_ESTOP_PANEL", "1")
     estop.launch_panel()
     monkeypatch.delenv("NIS_NO_ESTOP_PANEL")
+    monkeypatch.setenv("CONFOCAL_NO_ESTOP_PANEL", "1")         # the older name still works
+    estop.launch_panel()
+    monkeypatch.delenv("CONFOCAL_NO_ESTOP_PANEL")
     monkeypatch.setattr(estop, "panel_running", lambda: True)
     estop.launch_panel()
     assert opened == []
@@ -76,7 +79,7 @@ def test_launch_panel_starts_detached_process(monkeypatch):
     monkeypatch.setattr(estop, "panel_running", lambda: False)
     monkeypatch.setattr(estop.subprocess, "Popen", lambda *a, **k: opened.append(a[0]))
     estop.launch_panel()
-    assert opened[0][-2:] == ["-m", "nis_elements_mcp.estop_panel"]
+    assert opened[0][-2:] == ["-m", "acquisition.estop_panel"]
 
 
 def test_launch_panel_failure_goes_to_stderr(monkeypatch, capsys):

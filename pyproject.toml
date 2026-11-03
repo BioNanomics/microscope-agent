@@ -21,8 +21,6 @@ dependencies = [
     "Pillow==12.3.0",
     "PyYAML==6.0.3",
     "numpy==2.4.6",
-    # The NIS-Elements MCP server, from this repo's own folder (never from an index).
-    "nis-elements-mcp @ {root:uri}/packages/nis-elements-mcp",
 ]
 
 [project.optional-dependencies]
@@ -72,18 +70,12 @@ all = [
 
 [project.scripts]
 baumer-ti2-mcp = "mcp_server.baumer_ti2.baumer_ti2_server:main"
-# nis-mcp comes from the nis-elements-mcp package (default folders under ~/nis-mcp);
-# confocal-mcp-nis runs the same server with this repo's log and capture folders.
-# Old names, kept so existing MCP client configs keep working.
+# Old name, kept so existing MCP client configs keep working.
 confocal-mcp = "mcp_server.baumer_ti2.baumer_ti2_server:main"
-confocal-mcp-nis = "mcp_server.nis.nis_server:main"
 
 [project.urls]
 Homepage = "https://github.com/BioNanomics/microscope-agent"
 Repository = "https://github.com/BioNanomics/microscope-agent"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_server", "acquisition", "harness", "timelapse"]
